@@ -1,5 +1,31 @@
+azure-kusto-avro-conv
+=====================
 
-# Contributing
+Converts Avro files to JSON format.
+
+## Prerequisites ##
+
+ * Microsoft Visual Studio 2019.
+ * CMake >= 3.12.
+ * Private fork of [vcpkg](https://github.com/spektom/vcpkg).
+ * Apache Avro installed with `vcpkg` (see below).
+
+To install Apache Avro library, run:
+
+    git clone https://github.com/spektom/vcpkg.git
+    cd vcpkg
+    git checkout avro_c_snappy
+    .\bootstrap-vcpkg.bat
+    .\vcpkg install avro-c:x64-windows
+
+## Building ##
+
+    mkdir build
+    cd build
+    cmake -DCMAKE_TOOLCHAIN_FILE=C:\<path to>\vcpkg\scripts\buildsystems\vcpkg.cmake -A x64 ..
+    msbuild azure-kust-avro-conv.sln /p:Configuration=Release
+
+## Contributing ##
 
 This project welcomes contributions and suggestions.  Most contributions require you to agree to a
 Contributor License Agreement (CLA) declaring that you have the right to, and actually do, grant us
