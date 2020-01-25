@@ -1,9 +1,30 @@
 azure-kusto-avro-conv
 =====================
 
-Converts Avro files to JSON format.
+Utility that converts Avro files to JSON format.
 
-## Prerequisites ##
+
+## Building in Linux
+
+### Prerequisites
+
+ * CMake >= 3.12.
+ * libavro-dev
+
+### Compiling
+
+    mkdir build
+    cd build
+    cmake ..
+    make
+
+Sometimes, `zlib` can't be found by CMake, in such cases it's required to set the path to the library explicitly using:
+
+    cmake -DZLIB_LIBRARY=/usr/lib/x86_64-linux-gnu/libz.a ..
+
+## Building in Windows
+
+### Prerequisites
 
  * Microsoft Visual Studio 2019.
  * CMake >= 3.12.
@@ -18,14 +39,14 @@ To install Apache Avro library, run:
     .\bootstrap-vcpkg.bat
     .\vcpkg install avro-c:x64-windows
 
-## Building ##
+### Compiling
 
     mkdir build
     cd build
     cmake -DCMAKE_TOOLCHAIN_FILE=C:\<path to>\vcpkg\scripts\buildsystems\vcpkg.cmake -A x64 ..
     msbuild azure-kust-avro-conv.sln /p:Configuration=Release
 
-## Contributing ##
+## Contributing
 
 This project welcomes contributions and suggestions.  Most contributions require you to agree to a
 Contributor License Agreement (CLA) declaring that you have the right to, and actually do, grant us
