@@ -1,16 +1,12 @@
 #include <avro.h>
-#include <avro/platform.h>
 #include <errno.h>
+#include <jansson.h>
 #include <stdlib.h>
 #include <string.h>
 
-#include "avro/allocation.h"
-#include "avro/errors.h"
-#include "avro/legacy.h"
-#include "avro/schema.h"
-#include "avro/value.h"
-#include "avro_private.h"
-#include "jansson.h"
+typedef struct {
+  int prune;
+} config;
 
 /*
  * Converts a binary buffer into a NUL-terminated JSON UTF-8 string.
@@ -23,9 +19,6 @@
  */
 static int encode_utf8_bytes(const void *src, size_t src_len, void **dest,
                              size_t *dest_len) {
-  check_param(EINVAL, src, "source");
-  check_param(EINVAL, dest, "dest");
-  check_param(EINVAL, dest_len, "dest_len");
 
   // First, determine the size of the resulting UTF-8 buffer.
   // Bytes in the range 0x00..0x7f will take up one byte; bytes in
@@ -83,7 +76,8 @@ static int encode_utf8_bytes(const void *src, size_t src_len, void **dest,
     }                                                                          \
   } while (0)
 
-static json_t *avro_value_to_json_t(const avro_value_t *value) {
+static json_t *avro_value_to_json_t(const avro_value_t *value,
+                                    const config *conf) {
   switch (avro_value_get_type(value)) {
   case AVRO_BOOLEAN: {
     int val;
@@ -170,7 +164,7 @@ static json_t *avro_value_to_json_t(const avro_value_t *value) {
         return NULL;
       }
 
-      json_t *element_json = avro_value_to_json_t(&element);
+      json_t *element_json = avro_value_to_json_t(&element, conf);
       if (element_json == NULL) {
         json_decref(result);
         return NULL;
@@ -242,7 +236,7 @@ static json_t *avro_value_to_json_t(const avro_value_t *value) {
         return NULL;
       }
 
-      json_t *element_json = avro_value_to_json_t(&element);
+      json_t *element_json = avro_value_to_json_t(&element, conf);
       if (element_json == NULL) {
         json_decref(result);
         return NULL;
@@ -283,7 +277,7 @@ static json_t *avro_value_to_json_t(const avro_value_t *value) {
         return NULL;
       }
 
-      json_t *field_json = avro_value_to_json_t(&field);
+      json_t *field_json = avro_value_to_json_t(&field, conf);
       if (field_json == NULL) {
         json_decref(result);
         return NULL;
@@ -302,7 +296,7 @@ static json_t *avro_value_to_json_t(const avro_value_t *value) {
   case AVRO_UNION: {
     avro_value_t branch;
     check_return(NULL, avro_value_get_current_branch(value, &branch));
-    return avro_value_to_json_t(&branch);
+    return avro_value_to_json_t(&branch, conf);
   }
 
   default:
@@ -310,7 +304,20 @@ static json_t *avro_value_to_json_t(const avro_value_t *value) {
   }
 }
 
-static void process_file(const char *filename) {
+static int avro_to_json(const avro_value_t *value, char **json_str,
+                        const config *conf) {
+  json_t *json = avro_value_to_json_t(value, conf);
+  if (json == NULL) {
+    return ENOMEM;
+  }
+
+  *json_str =
+      json_dumps(json, JSON_ENCODE_ANY | JSON_COMPACT | JSON_ENSURE_ASCII);
+  json_decref(json);
+  return 0;
+}
+
+static void process_file(const char *filename, const config *conf) {
   avro_file_reader_t reader;
   if (avro_file_reader(filename, &reader)) {
     fprintf(stderr, "Error opening file '%s': %s\n", filename, avro_strerror());
@@ -327,7 +334,7 @@ static void process_file(const char *filename) {
   while ((rval = avro_file_reader_read_value(reader, &value)) == 0) {
     char *json;
 
-    if (avro_value_to_json(&value, 1, &json)) {
+    if (avro_to_json(&value, &json, conf)) {
       fprintf(stderr, "Error converting value to JSON: %s\n", avro_strerror());
     } else {
       printf("%s\n", json);
@@ -347,11 +354,31 @@ static void process_file(const char *filename) {
   avro_schema_decref(wschema);
 }
 
-int main(int argc, char **argv) {
-  if (argc != 2) {
-    fprintf(stderr, "USAGE: %s <Avro data file>\n", argv[0]);
-    exit(1);
+static void print_usage(const char *exe) {
+  fprintf(stderr,
+          "Usage: %s [OPTIONS] FILE\n"
+          "\n"
+          "Where options are:\n"
+          " --prune     Omit null values as well as empty lists and objects\n",
+          exe);
+  exit(1);
+}
+
+void main(int argc, char **argv) {
+  config conf = {.prune = 0};
+
+  int arg_idx;
+  for (arg_idx = 1; arg_idx < argc - 1; ++arg_idx) {
+    if (!strcmp(argv[arg_idx], "--prune")) {
+      conf.prune = 1;
+    } else {
+      print_usage(argv[0]);
+    }
+  }
+  if (arg_idx != argc - 1) {
+    print_usage(argv[0]);
   }
 
-  process_file(argv[1]);
+  process_file(argv[arg_idx], &conf);
+  exit(0);
 }

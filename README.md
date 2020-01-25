@@ -37,13 +37,13 @@ To install Apache Avro library, run:
     cd vcpkg
     git checkout avro_c_snappy
     .\bootstrap-vcpkg.bat
-    .\vcpkg install avro-c:x64-windows
+    .\vcpkg install avro-c:x64-windows-static
 
 ### Compiling
 
     mkdir build
     cd build
-    cmake -DCMAKE_TOOLCHAIN_FILE=C:\<path to>\vcpkg\scripts\buildsystems\vcpkg.cmake -A x64 ..
+    cmake -DVCPKG_TARGET_TRIPLET=x64-windows-static -DCMAKE_TOOLCHAIN_FILE=C:\<path to>\vcpkg\scripts\buildsystems\vcpkg.cmake -A x64 ..
     msbuild azure-kust-avro-conv.sln /p:Configuration=Release
 
 ## Contributing

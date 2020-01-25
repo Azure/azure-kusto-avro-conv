@@ -1,7 +1,7 @@
 <?xml version="1.0"?>
-<package >
+<package xmlns="http://schemas.microsoft.com/packaging/2013/05/nuspec.xsd">
   <metadata>
-    <id>pq2json</id>
+    <id>avro2json</id>
     <version>0.1.1</version>
     <authors>Michael Spector</authors>
     <owners>Michael Spector</owners>
@@ -11,7 +11,7 @@
     <description>Avro to JSON converter tool.</description>
     <releaseNotes>Initial release.</releaseNotes>
     <copyright>Copyright 2020</copyright>
-    <tags></tags>
+    <tags>utility</tags>
     <dependencies>
     </dependencies>
   </metadata>
