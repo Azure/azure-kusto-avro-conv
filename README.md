@@ -11,7 +11,11 @@ Utility that converts Avro files to JSON format.
 ### Prerequisites
 
  * CMake >= 3.12.
- * libavro-dev
+ * [Apache Avro for C](https://avro.apache.org/docs/current/api/c/index.html)
+
+To install all the required dependencies (in Ubuntu/Debian), run:
+
+    apt-get install libavro-dev libjansson-dev liblzma-dev libsnappy-dev zlib1g-dev
 
 ### Compiling
 
