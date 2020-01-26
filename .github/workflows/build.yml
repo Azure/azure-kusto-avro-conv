@@ -9,6 +9,8 @@ jobs:
 
     steps:
     - uses: actions/checkout@v1
+    - name: install dependencies
+      run: apt-get install libavro-dev
     - name: build
       run: |
         mkdir build
