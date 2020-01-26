@@ -1,6 +1,8 @@
 azure-kusto-avro-conv
 =====================
 
+![Build Status](https://github.com/Azure/azure-kusto-avro-conv/workflows/build/badge.svg)
+
 Utility that converts Avro files to JSON format.
 
 

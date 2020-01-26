@@ -283,6 +283,13 @@ static json_t *avro_value_to_json_t(const avro_value_t *value,
         return NULL;
       }
 
+      if (conf->prune &&
+          (json_is_null(field_json) ||
+           json_is_object(field_json) && !json_object_size(field_json) ||
+           json_is_array(field_json) && !json_array_size(field_json))) {
+        continue;
+      }
+
       if (json_object_set_new(result, field_name, field_json)) {
         avro_set_error("Cannot append field to record");
         json_decref(result);
