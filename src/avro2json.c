@@ -344,8 +344,12 @@ static void process_file(const char *filename, const config *conf) {
     if (avro_to_json(&value, &json, conf)) {
       fprintf(stderr, "Error converting value to JSON: %s\n", avro_strerror());
     } else {
-      printf("%s\n", json);
+      int ret = printf("%s\n", json);
       free(json);
+      if (ret < 0) {
+        rval = EOF;
+        break;
+      }
     }
 
     avro_value_reset(&value);
