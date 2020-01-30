@@ -97,7 +97,7 @@ static json_t *avro_value_to_json_t(const avro_value_t *value,
       return NULL;
     }
 
-    json_t *result = json_string_nocheck((const char *)encoded);
+    json_t *result = json_stringn((const char *)encoded, encoded_size - 1);
     avro_free(encoded, encoded_size);
     if (result == NULL) {
       avro_set_error("Cannot allocate JSON bytes");
@@ -203,7 +203,7 @@ static json_t *avro_value_to_json_t(const avro_value_t *value,
       return NULL;
     }
 
-    json_t *result = json_string_nocheck((const char *)encoded);
+    json_t *result = json_stringn((const char *)encoded, encoded_size - 1);
     avro_free(encoded, encoded_size);
     if (result == NULL) {
       avro_set_error("Cannot allocate JSON fixed");
