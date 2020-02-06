@@ -34,14 +34,13 @@ Sometimes, `zlib` can't be found by CMake, in such cases it's required to set th
 
  * Microsoft Visual Studio 2019.
  * CMake >= 3.12.
- * Private fork of [vcpkg](https://github.com/spektom/vcpkg).
+ * [vcpkg](https://github.com/microsoft/vcpkg)
  * Apache Avro installed with `vcpkg` (see below).
 
 To install Apache Avro library, run:
 
-    git clone https://github.com/spektom/vcpkg.git
+    git clone https://github.com/microsoft/vcpkg.git
     cd vcpkg
-    git checkout avro_c_snappy
     .\bootstrap-vcpkg.bat
     .\vcpkg install avro-c:x64-windows-static
 
