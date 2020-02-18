@@ -2,14 +2,14 @@
 <package xmlns="http://schemas.microsoft.com/packaging/2013/05/nuspec.xsd">
   <metadata>
     <id>avro2json</id>
-    <version>0.1.3</version>
+    <version>0.1.4</version>
     <authors>Michael Spector</authors>
     <owners>Michael Spector</owners>
     <license type="expression">MIT</license>
     <projectUrl>https://github.com/Azure/azure-kusto-avro-conv</projectUrl>
     <requireLicenseAcceptance>false</requireLicenseAcceptance>
     <description>Avro to JSON converter tool.</description>
-    <releaseNotes>Proper encoding of strings containing \u0000</releaseNotes>
+    <releaseNotes>Encode double/float Infinity and NaN as strings</releaseNotes>
     <copyright>Copyright 2020</copyright>
     <tags>utility avro json parsing</tags>
     <dependencies>
