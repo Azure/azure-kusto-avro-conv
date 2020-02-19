@@ -7,6 +7,8 @@ run_test() {
   testfile=$1
   set +e
 
+  echo "Testing: ${testfile}.avro"
+
   ./avro2json "../tests/${testfile}.avro" > $tmpfile
   if ! diff $tmpfile "../tests/${testfile}.json"; then
     exit 1
