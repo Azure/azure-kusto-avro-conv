@@ -58,6 +58,15 @@ static int encode_utf8_bytes(const void *src, size_t src_len, void **dest,
   return 0;
 }
 
+#ifndef isnan
+#ifndef __sun
+static int isnan(double x) { return x != x; }
+#endif
+#endif
+#ifndef isinf
+static int isinf(double x) { return !isnan(x) && isnan(x - x); }
+#endif
+
 #define return_json(type, exp)                                                 \
   {                                                                            \
     json_t *result = exp;                                                      \
@@ -65,6 +74,17 @@ static int encode_utf8_bytes(const void *src, size_t src_len, void **dest,
       avro_set_error("Cannot allocate JSON " type);                            \
     }                                                                          \
     return result;                                                             \
+  }
+
+#define return_json_real(type, val)                                            \
+  {                                                                            \
+    if (isinf(val)) {                                                          \
+      return_json("string", json_string("Infinity"));                          \
+    }                                                                          \
+    if (isnan(val)) {                                                          \
+      return_json("string", json_string("NaN"));                               \
+    }                                                                          \
+    return_json(type, json_real(val));                                         \
   }
 
 #define check_return(retval, call)                                             \
@@ -108,13 +128,13 @@ static json_t *avro_value_to_json_t(const avro_value_t *value,
   case AVRO_DOUBLE: {
     double val;
     check_return(NULL, avro_value_get_double(value, &val));
-    return_json("double", json_real(val));
+    return_json_real("double", val);
   }
 
   case AVRO_FLOAT: {
     float val;
     check_return(NULL, avro_value_get_float(value, &val));
-    return_json("float", json_real(val));
+    return_json_real("float", val);
   }
 
   case AVRO_INT32: {
