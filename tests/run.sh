@@ -20,6 +20,7 @@ run_test() {
   fi
 }
 
-for t in file1; do
+for t in file1 reals
+do
   run_test $t
 done
