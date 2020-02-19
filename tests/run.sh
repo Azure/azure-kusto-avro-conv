@@ -12,9 +12,11 @@ run_test() {
     exit 1
   fi
 
-  ./avro2json --prune "../tests/${testfile}.avro" > $tmpfile
-  if ! diff $tmpfile "../tests/${testfile}-prune.json"; then
-    exit 1
+  if [ -f "../tests/${testfile}-prune.json" ]; then
+    ./avro2json --prune "../tests/${testfile}.avro" > $tmpfile
+    if ! diff $tmpfile "../tests/${testfile}-prune.json"; then
+      exit 1
+    fi
   fi
 }
 

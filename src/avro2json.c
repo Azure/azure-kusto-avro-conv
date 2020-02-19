@@ -78,10 +78,10 @@ static int isinf(double x) { return !isnan(x) && isnan(x - x); }
 
 #define return_json_real(type, val)                                            \
   {                                                                            \
-    if (isnan(val)) {                                                          \
+    if (isinf(val)) {                                                          \
       return_json("string", json_string("Infinity"));                          \
     }                                                                          \
-    if (isinf(val)) {                                                          \
+    if (isnan(val)) {                                                          \
       return_json("string", json_string("NaN"));                               \
     }                                                                          \
     return_json(type, json_real(val));                                         \
