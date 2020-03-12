@@ -15,7 +15,7 @@ Utility that converts Avro files to JSON format.
 
 To install all the required dependencies (in Ubuntu/Debian), run:
 
-    apt-get install libavro-dev libjansson-dev liblzma-dev libsnappy-dev zlib1g-dev
+    apt-get install libavro-dev libjansson-dev liblzma-dev libsnappy-dev zlib1g-dev libgmp-dev
 
 ### Compiling
 
@@ -34,13 +34,14 @@ Sometimes, `zlib` can't be found by CMake, in such cases it's required to set th
 
  * Microsoft Visual Studio 2019.
  * CMake >= 3.12.
- * [vcpkg](https://github.com/microsoft/vcpkg)
+ * Private fork of [vcpkg](https://github.com/spektom/vcpkg/tree/avro_logical_types)
  * Apache Avro installed with `vcpkg` (see below).
 
 To install Apache Avro library, run:
 
-    git clone https://github.com/microsoft/vcpkg.git
+    git clone https://github.com/spektom/vcpkg.git
     cd vcpkg
+    git checkout avro_logical_types
     .\bootstrap-vcpkg.bat
     .\vcpkg install avro-c:x64-windows-static
 
