@@ -6,9 +6,15 @@
 
 #include "logical.h"
 
+#if defined(_WIN32) || defined(_WIN64)
+#define strtok_r strtok_s
+#endif
+
 typedef struct {
   int prune;
   int logical_types;
+  int32_t *columns;
+  size_t columns_size;
 } config_t;
 
 typedef struct {
@@ -157,7 +163,7 @@ static json_t *avro_bytes_value_to_json_t(const avro_value_t *value,
   return_json("string", json_stringn((const char *)encoded, encoded_size - 1));
 }
 
-static json_t *avro_value_to_json_t(const avro_value_t *value,
+static json_t *avro_value_to_json_t(const avro_value_t *value, int top_level,
                                     const config_t *conf, cache_t *cache) {
   switch (avro_value_get_type(value)) {
   case AVRO_BOOLEAN: {
@@ -267,7 +273,7 @@ static json_t *avro_value_to_json_t(const avro_value_t *value,
         return NULL;
       }
 
-      json_t *element_json = avro_value_to_json_t(&element, conf, cache);
+      json_t *element_json = avro_value_to_json_t(&element, 0, conf, cache);
       if (element_json == NULL) {
         json_decref(result);
         return NULL;
@@ -326,7 +332,7 @@ static json_t *avro_value_to_json_t(const avro_value_t *value,
         return NULL;
       }
 
-      json_t *element_json = avro_value_to_json_t(&element, conf, cache);
+      json_t *element_json = avro_value_to_json_t(&element, 0, conf, cache);
       if (element_json == NULL) {
         json_decref(result);
         return NULL;
@@ -357,7 +363,13 @@ static json_t *avro_value_to_json_t(const avro_value_t *value,
       return NULL;
     }
 
+    int filter_cols = top_level && conf->columns_size > 0;
+
     for (i = 0; i < field_count; i++) {
+      if (filter_cols && (i >= conf->columns_size || !conf->columns[i])) {
+        continue;
+      }
+
       const char *field_name;
       avro_value_t field;
 
@@ -367,7 +379,7 @@ static json_t *avro_value_to_json_t(const avro_value_t *value,
         return NULL;
       }
 
-      json_t *field_json = avro_value_to_json_t(&field, conf, cache);
+      json_t *field_json = avro_value_to_json_t(&field, 0, conf, cache);
       if (field_json == NULL) {
         json_decref(result);
         return NULL;
@@ -393,7 +405,7 @@ static json_t *avro_value_to_json_t(const avro_value_t *value,
   case AVRO_UNION: {
     avro_value_t branch;
     check_return(NULL, avro_value_get_current_branch(value, &branch));
-    return avro_value_to_json_t(&branch, conf, cache);
+    return avro_value_to_json_t(&branch, 0, conf, cache);
   }
 
   default:
@@ -403,7 +415,7 @@ static json_t *avro_value_to_json_t(const avro_value_t *value,
 
 static int avro_to_json(const avro_value_t *value, char **json_str,
                         const config_t *conf, cache_t *cache) {
-  json_t *json = avro_value_to_json_t(value, conf, cache);
+  json_t *json = avro_value_to_json_t(value, 1, conf, cache);
   if (json == NULL) {
     return ENOMEM;
   }
@@ -463,30 +475,85 @@ static void print_usage(const char *exe) {
           "Usage: %s [OPTIONS] FILE\n"
           "\n"
           "Where options are:\n"
-          " --prune          Omit null values as well as empty lists and "
+          " --prune            Omit null values as well as empty lists and "
           "objects\n"
-          " --logical-types  Convert logical types automatically\n",
+          " --logical-types    Convert logical types automatically\n"
+          " --columns 1,2,...  Only output specified columns numbers\n",
           exe);
   exit(1);
 }
 
-void main(int argc, char **argv) {
-  config_t conf = {.prune = 0, .logical_types = 0};
+static int parse_columns_indices(char *cols_list, int32_t **columns,
+                                 size_t *columns_size) {
+  const char *p = cols_list;
+  size_t cols_num = 1;
+  while (*p) {
+    cols_num += *p++ == ',' ? 1 : 0;
+  }
+  int32_t *cols_indices = (int32_t *)malloc(sizeof(int32_t) * cols_num);
+  char *saveptr;
+  char *col = strtok_r(cols_list, ",", &saveptr);
+  int32_t *c = cols_indices;
+  do {
+    int col_idx = atoi(col);
+    if (col_idx <= 0) {
+      return EINVAL;
+      free(cols_indices);
+    }
+    *c++ = col_idx;
+    col = strtok_r(NULL, ",", &saveptr);
+  } while (col != NULL);
 
+  size_t size = 0;
+  for (int i = 0; i < cols_num; ++i) {
+    if (cols_indices[i] > size) {
+      size = cols_indices[i];
+    }
+  }
+  int32_t *cols = (int32_t *)malloc(sizeof(int32_t) * size);
+  memset(cols, 0, sizeof(int32_t) * size);
+  for (int i = 0; i < cols_num; ++i) {
+    cols[cols_indices[i] - 1] = 1;
+  }
+  free(cols_indices);
+  *columns = cols;
+  *columns_size = size;
+  return 0;
+}
+
+static const char *parse_args(int argc, char **argv, config_t *conf) {
   int arg_idx;
   for (arg_idx = 1; arg_idx < argc - 1; ++arg_idx) {
     if (!strcmp(argv[arg_idx], "--prune")) {
-      conf.prune = 1;
+      conf->prune = 1;
     } else if (!strcmp(argv[arg_idx], "--logical-types")) {
-      conf.logical_types = 1;
+      conf->logical_types = 1;
+    } else if (!strcmp(argv[arg_idx], "--columns") && arg_idx < argc - 1) {
+      if (parse_columns_indices(argv[++arg_idx], &conf->columns,
+                                &conf->columns_size)) {
+        print_usage(argv[0]);
+      }
     } else {
       print_usage(argv[0]);
     }
   }
+
   if (arg_idx != argc - 1) {
     print_usage(argv[0]);
   }
 
-  process_file(argv[arg_idx], &conf);
+  return argv[arg_idx];
+}
+
+void main(int argc, char **argv) {
+  config_t conf = {
+      .prune = 0, .logical_types = 0, .columns = NULL, .columns_size = 0};
+
+  const char *file = parse_args(argc, argv, &conf);
+  process_file(file, &conf);
+
+  if (conf.columns) {
+    free(conf.columns);
+  }
   exit(0);
 }
