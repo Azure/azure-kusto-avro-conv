@@ -36,6 +36,8 @@ void decimal_from_bytes(decimal_t *value, int8_t *bytes_be, size_t size,
     }
     for (size_t i = size - 1; ++bytes_be[i] == 0; i--) // add a 'one'
       ;
+  } else {
+    value->negative = 0;
   }
 
   value->scale = scale;
@@ -99,8 +101,15 @@ char *decimal_to_str(decimal_t *value, char **buf, size_t *buf_size) {
 
   // strip trailing zeros, and update the length:
   char *e = num + len - 1;
-  for (; len > 0 && (*e == '0' || *e == '.'); --len, --e)
-    ;
+  for (; len > 0; --len, --e) {
+    if (*e == '0') {
+      continue;
+    }
+    if (*e == '.') {
+      --len;
+    }
+    break;
+  }
   *(num + len) = '\0';
 
   // add '-' sign if it's negative number:
@@ -206,7 +215,7 @@ char *timestamp_millis_to_str(int64_t millis) {
   dt.tm_mday = 1;
   mktime(&dt);
 
-  dt.tm_sec += (int32_t)(millis / MILLIS_IN_SEC);
+  dt.tm_sec = (int32_t)(millis / MILLIS_IN_SEC);
   if (mktime(&dt) == -1) {
     if (millis < 0) {
       return MIN_DATETIME_MILLIS;
@@ -231,7 +240,7 @@ char *timestamp_micros_to_str(int64_t micros) {
   dt.tm_mday = 1;
   mktime(&dt);
 
-  dt.tm_sec += (int32_t)(micros / MICROS_IN_SEC);
+  dt.tm_sec = (int32_t)(micros / MICROS_IN_SEC);
   if (mktime(&dt) == -1) {
     if (micros < 0) {
       return MIN_DATETIME_MICROS;
@@ -241,8 +250,8 @@ char *timestamp_micros_to_str(int64_t micros) {
 
   strftime(buf, sizeof(buf), "%Y-%m-%d %H:%M:%S", &dt);
 
-  int64_t rem = micros % MICROS_IN_SEC;
+  int32_t rem = micros % MICROS_IN_SEC;
   char *p = buf + sizeof(MIN_DATETIME_MICROS) - 8;
-  snprintf(p, 8, ".%06" PRId64, rem);
+  snprintf(p, 8, ".%06d", rem);
   return buf;
 }

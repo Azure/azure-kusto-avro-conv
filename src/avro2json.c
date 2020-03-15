@@ -387,8 +387,8 @@ static json_t *avro_value_to_json_t(const avro_value_t *value, int top_level,
 
       if (conf->prune &&
           (json_is_null(field_json) ||
-           json_is_object(field_json) && !json_object_size(field_json) ||
-           json_is_array(field_json) && !json_array_size(field_json))) {
+           (json_is_object(field_json) && !json_object_size(field_json)) ||
+           (json_is_array(field_json) && !json_array_size(field_json)))) {
         continue;
       }
 
@@ -545,7 +545,7 @@ static const char *parse_args(int argc, char **argv, config_t *conf) {
   return argv[arg_idx];
 }
 
-void main(int argc, char **argv) {
+int main(int argc, char **argv) {
   config_t conf = {
       .prune = 0, .logical_types = 0, .columns = NULL, .columns_size = 0};
 
@@ -555,5 +555,5 @@ void main(int argc, char **argv) {
   if (conf.columns) {
     free(conf.columns);
   }
-  exit(0);
+  return 0;
 }

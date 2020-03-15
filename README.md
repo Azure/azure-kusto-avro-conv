@@ -11,18 +11,28 @@ Utility that converts Avro files to JSON format.
 ### Prerequisites
 
  * CMake >= 3.12.
- * [Apache Avro for C](https://avro.apache.org/docs/current/api/c/index.html)
+ * Private fork of [Apache Avro for C](https://avro.apache.org/docs/current/api/c/index.html)
 
 To install all the required dependencies (in Ubuntu/Debian), run:
 
-    apt-get install libavro-dev libjansson-dev liblzma-dev libsnappy-dev zlib1g-dev libgmp-dev
+    apt-get install libjansson-dev liblzma-dev libsnappy-dev zlib1g-dev libgmp-dev
+
+Build private Avro C fork that includes logical types support:
+
+    git clone https://github.com/spektom/avro.git
+    cd avro/lang/c
+    git checkout c_logical_types
+    mkdir build
+    cd build
+    cmake ..
+    make -j
 
 ### Compiling
 
     mkdir build
     cd build
     cmake ..
-    make
+    make -j
 
 Sometimes, `zlib` can't be found by CMake, in such cases it's required to set the path to the library explicitly using:
 
