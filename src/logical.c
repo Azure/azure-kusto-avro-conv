@@ -28,7 +28,7 @@ void decimal_free(decimal_t *value) {
 void decimal_from_bytes(decimal_t *value, int8_t *bytes_be, size_t size,
                         size_t scale) {
 
-  if (bytes_be[0] == -1) {
+  if (bytes_be[0] < 0) {
     value->negative = 1;
     // convert to positive complement's two binary representation
     for (int i = 0; i < size; ++i) {
@@ -97,20 +97,20 @@ char *decimal_to_str(decimal_t *value, char **buf, size_t *buf_size) {
     }
     *dot_at = '.';
     len += 1;
-  }
 
-  // strip trailing zeros, and update the length:
-  char *e = num + len - 1;
-  for (; len > 0; --len, --e) {
-    if (*e == '0') {
-      continue;
+    // strip trailing zeros, and update the length:
+    char *e = num + len - 1;
+    for (; len > 0; --len, --e) {
+      if (*e == '0') {
+        continue;
+      }
+      if (*e == '.') {
+        --len;
+      }
+      break;
     }
-    if (*e == '.') {
-      --len;
-    }
-    break;
+    *(num + len) = '\0';
   }
-  *(num + len) = '\0';
 
   // add '-' sign if it's negative number:
   if (value->negative) {
