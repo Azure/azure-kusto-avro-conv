@@ -4,25 +4,26 @@ tmpfile=$(mktemp)
 trap "rm -f $tmpfile" EXIT
 
 run_test() {
-  testfile=$1
+  tfile="$1.avro"
+  efile="$2.json"
+  shift; shift
   set +e
+  options="$@"
 
-  echo "Testing: ${testfile}.avro"
-
-  ./avro2json "../tests/${testfile}.avro" > $tmpfile
-  if ! diff $tmpfile "../tests/${testfile}.json"; then
+  echo "Running: ./avro2json $options ../tests/${tfile}"
+  ./avro2json $options "../tests/${tfile}" > $tmpfile
+  if ! diff $tmpfile "../tests/${efile}"; then
     exit 1
-  fi
-
-  if [ -f "../tests/${testfile}-prune.json" ]; then
-    ./avro2json --prune "../tests/${testfile}.avro" > $tmpfile
-    if ! diff $tmpfile "../tests/${testfile}-prune.json"; then
-      exit 1
-    fi
   fi
 }
 
-for t in file1 reals
-do
-  run_test $t
-done
+run_test file1 file1
+run_test file1 file1-p --prune
+run_test reals reals
+run_test decimals decimals
+run_test decimals decimals-l --logical-types
+run_test columns columns-1 --columns 1
+run_test columns columns-2 --columns 2
+run_test columns columns-3 --columns 1,4
+run_test dates dates-l --logical-types
+run_test datetimes datetimes-l --logical-types

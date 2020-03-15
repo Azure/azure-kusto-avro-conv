@@ -8,8 +8,20 @@ find_library(LZMA_LIBRARY lzma)
 find_library(ZLIB_LIBRARY zlib)
 find_library(SNAPPY_LIBRARY snappy)
 
+if (WIN32)
+  find_library(GMP_LIBRARY mpir)
+else (WIN32)
+  find_library(GMP_LIBRARY gmp)
+endif (WIN32)
+
+set(MATH_LIBRARY)
+if(NOT MSVC)
+    set(MATH_LIBRARY m)
+endif(NOT MSVC)
+
 add_executable(avro2json
-  src/avro2json.c)
+  src/avro2json.c
+  src/logical.c)
 
 target_include_directories(avro2json
   PRIVATE ${AVRO_INCLUDE_DIR})
@@ -19,4 +31,6 @@ target_link_libraries(avro2json
   ${JANSSON_LIBRARY}
   ${LZMA_LIBRARY}
   ${ZLIB_LIBRARY}
-  ${SNAPPY_LIBRARY})
+  ${SNAPPY_LIBRARY}
+  ${GMP_LIBRARY}
+  ${MATH_LIBRARY})

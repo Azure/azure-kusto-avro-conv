@@ -4,9 +4,40 @@
 #include <stdlib.h>
 #include <string.h>
 
+#include "logical.h"
+
+#if defined(_WIN32) || defined(_WIN64)
+#define strtok_r strtok_s
+#endif
+
 typedef struct {
   int prune;
-} config;
+  int logical_types;
+  int32_t *columns;
+  size_t columns_size;
+} config_t;
+
+typedef struct {
+  decimal_t *dec;
+  char *str;
+  size_t str_size;
+  uint8_t *utf8;
+  size_t utf8_size;
+} cache_t;
+
+static cache_t *cache_new() {
+  cache_t *cache = (cache_t *)malloc(sizeof(cache_t));
+  memset(cache, 0, sizeof(cache_t));
+  cache->dec = decimal_new();
+  return cache;
+}
+
+static void cache_free(cache_t *cache) {
+  decimal_free(cache->dec);
+  free(cache->str);
+  free(cache->utf8);
+  free(cache);
+}
 
 /*
  * Converts a binary buffer into a NUL-terminated JSON UTF-8 string.
@@ -14,11 +45,9 @@ typedef struct {
  * strings must be in UTF-8.  For these Avro types, the JSON string is
  * restricted to the characters U+0000..U+00FF, which corresponds to the
  * ISO-8859-1 character set.  This function performs this conversion.
- * The resulting string must be freed using avro_free when you're done
- * with it.
  */
 static int encode_utf8_bytes(const void *src, size_t src_len, void **dest,
-                             size_t *dest_len) {
+                             size_t *dest_len, cache_t *cache) {
 
   // First, determine the size of the resulting UTF-8 buffer.
   // Bytes in the range 0x00..0x7f will take up one byte; bytes in
@@ -33,8 +62,14 @@ static int encode_utf8_bytes(const void *src, size_t src_len, void **dest,
     }
   }
 
-  // Allocate a new buffer for the UTF-8 string and fill it in.
-  uint8_t *dest8 = (uint8_t *)avro_malloc(utf8_len);
+  // Reuse a cached buffer for the UTF-8 string and fill it in (resize the
+  // buffer when needed).
+  uint8_t *dest8 = cache->utf8;
+  if (cache->utf8_size < utf8_len) {
+    cache->utf8 = (uint8_t *)realloc(cache->utf8, sizeof(uint8_t) * utf8_len);
+    cache->utf8_size = utf8_len;
+    dest8 = cache->utf8;
+  }
   if (dest8 == NULL) {
     avro_set_error("Cannot allocate JSON bytes buffer");
     return ENOMEM;
@@ -96,8 +131,40 @@ static int isinf(double x) { return !isnan(x) && isnan(x - x); }
     }                                                                          \
   } while (0)
 
-static json_t *avro_value_to_json_t(const avro_value_t *value,
-                                    const config *conf) {
+static json_t *avro_bytes_value_to_json_t(const avro_value_t *value,
+                                          const void *bytes, size_t size,
+                                          const config_t *conf,
+                                          cache_t *cache) {
+  avro_logical_schema_t *logical_type = NULL;
+  if (conf->logical_types) {
+    logical_type = avro_logical_schema(avro_value_get_schema(value));
+  }
+
+  if (logical_type != NULL) {
+    if (logical_type->type != AVRO_DECIMAL) {
+      avro_set_error("Unsupported logical type annotation in BYTES/FIXED type");
+      return NULL;
+    }
+
+    decimal_from_bytes(cache->dec, (int8_t *)bytes, size, logical_type->scale);
+    char *str = decimal_to_str(cache->dec, &cache->str, &cache->str_size);
+    if (str == NULL) {
+      avro_set_error("Cannot render decimal value");
+      return NULL;
+    }
+    return_json("string", json_string(str));
+  }
+
+  void *encoded = NULL;
+  size_t encoded_size = 0;
+  if (encode_utf8_bytes(bytes, size, &encoded, &encoded_size, cache)) {
+    return NULL;
+  }
+  return_json("string", json_stringn((const char *)encoded, encoded_size - 1));
+}
+
+static json_t *avro_value_to_json_t(const avro_value_t *value, int top_level,
+                                    const config_t *conf, cache_t *cache) {
   switch (avro_value_get_type(value)) {
   case AVRO_BOOLEAN: {
     int val;
@@ -108,21 +175,8 @@ static json_t *avro_value_to_json_t(const avro_value_t *value,
   case AVRO_BYTES: {
     const void *val;
     size_t size;
-    void *encoded = NULL;
-    size_t encoded_size = 0;
-
     check_return(NULL, avro_value_get_bytes(value, &val, &size));
-
-    if (encode_utf8_bytes(val, size, &encoded, &encoded_size)) {
-      return NULL;
-    }
-
-    json_t *result = json_stringn((const char *)encoded, encoded_size - 1);
-    avro_free(encoded, encoded_size);
-    if (result == NULL) {
-      avro_set_error("Cannot allocate JSON bytes");
-    }
-    return result;
+    return avro_bytes_value_to_json_t(value, val, size, conf, cache);
   }
 
   case AVRO_DOUBLE: {
@@ -140,12 +194,47 @@ static json_t *avro_value_to_json_t(const avro_value_t *value,
   case AVRO_INT32: {
     int32_t val;
     check_return(NULL, avro_value_get_int(value, &val));
+
+    avro_logical_schema_t *logical_type = NULL;
+    if (conf->logical_types) {
+      logical_type = avro_logical_schema(avro_value_get_schema(value));
+    }
+
+    if (logical_type != NULL) {
+      if (logical_type->type == AVRO_DATE) {
+        return_json("string", json_string(epoch_days_to_str(val)));
+      }
+      if (logical_type->type == AVRO_TIME_MILLIS) {
+        return_json("string", json_string(time_millis_to_str(val)));
+      }
+      avro_set_error("INT type is annotated by an unsupported logical type");
+      return NULL;
+    }
     return_json("int", json_integer(val));
   }
 
   case AVRO_INT64: {
     int64_t val;
     check_return(NULL, avro_value_get_long(value, &val));
+
+    avro_logical_schema_t *logical_type = NULL;
+    if (conf->logical_types) {
+      logical_type = avro_logical_schema(avro_value_get_schema(value));
+    }
+
+    if (logical_type != NULL) {
+      if (logical_type->type == AVRO_TIME_MICROS) {
+        return_json("string", json_string(time_micros_to_str(val)));
+      }
+      if (logical_type->type == AVRO_TIMESTAMP_MILLIS) {
+        return_json("string", json_string(timestamp_millis_to_str(val)));
+      }
+      if (logical_type->type == AVRO_TIMESTAMP_MICROS) {
+        return_json("string", json_string(timestamp_micros_to_str(val)));
+      }
+      avro_set_error("LONG type is annotated by an unsupported logical type");
+      return NULL;
+    }
     return_json("long", json_integer(val));
   }
 
@@ -184,7 +273,7 @@ static json_t *avro_value_to_json_t(const avro_value_t *value,
         return NULL;
       }
 
-      json_t *element_json = avro_value_to_json_t(&element, conf);
+      json_t *element_json = avro_value_to_json_t(&element, 0, conf, cache);
       if (element_json == NULL) {
         json_decref(result);
         return NULL;
@@ -214,21 +303,8 @@ static json_t *avro_value_to_json_t(const avro_value_t *value,
   case AVRO_FIXED: {
     const void *val;
     size_t size;
-    void *encoded = NULL;
-    size_t encoded_size = 0;
-
     check_return(NULL, avro_value_get_fixed(value, &val, &size));
-
-    if (encode_utf8_bytes(val, size, &encoded, &encoded_size)) {
-      return NULL;
-    }
-
-    json_t *result = json_stringn((const char *)encoded, encoded_size - 1);
-    avro_free(encoded, encoded_size);
-    if (result == NULL) {
-      avro_set_error("Cannot allocate JSON fixed");
-    }
-    return result;
+    return avro_bytes_value_to_json_t(value, val, size, conf, cache);
   }
 
   case AVRO_MAP: {
@@ -256,7 +332,7 @@ static json_t *avro_value_to_json_t(const avro_value_t *value,
         return NULL;
       }
 
-      json_t *element_json = avro_value_to_json_t(&element, conf);
+      json_t *element_json = avro_value_to_json_t(&element, 0, conf, cache);
       if (element_json == NULL) {
         json_decref(result);
         return NULL;
@@ -287,7 +363,13 @@ static json_t *avro_value_to_json_t(const avro_value_t *value,
       return NULL;
     }
 
+    int filter_cols = top_level && conf->columns_size > 0;
+
     for (i = 0; i < field_count; i++) {
+      if (filter_cols && (i >= conf->columns_size || !conf->columns[i])) {
+        continue;
+      }
+
       const char *field_name;
       avro_value_t field;
 
@@ -297,7 +379,7 @@ static json_t *avro_value_to_json_t(const avro_value_t *value,
         return NULL;
       }
 
-      json_t *field_json = avro_value_to_json_t(&field, conf);
+      json_t *field_json = avro_value_to_json_t(&field, 0, conf, cache);
       if (field_json == NULL) {
         json_decref(result);
         return NULL;
@@ -305,8 +387,8 @@ static json_t *avro_value_to_json_t(const avro_value_t *value,
 
       if (conf->prune &&
           (json_is_null(field_json) ||
-           json_is_object(field_json) && !json_object_size(field_json) ||
-           json_is_array(field_json) && !json_array_size(field_json))) {
+           (json_is_object(field_json) && !json_object_size(field_json)) ||
+           (json_is_array(field_json) && !json_array_size(field_json)))) {
         continue;
       }
 
@@ -323,7 +405,7 @@ static json_t *avro_value_to_json_t(const avro_value_t *value,
   case AVRO_UNION: {
     avro_value_t branch;
     check_return(NULL, avro_value_get_current_branch(value, &branch));
-    return avro_value_to_json_t(&branch, conf);
+    return avro_value_to_json_t(&branch, 0, conf, cache);
   }
 
   default:
@@ -332,8 +414,8 @@ static json_t *avro_value_to_json_t(const avro_value_t *value,
 }
 
 static int avro_to_json(const avro_value_t *value, char **json_str,
-                        const config *conf) {
-  json_t *json = avro_value_to_json_t(value, conf);
+                        const config_t *conf, cache_t *cache) {
+  json_t *json = avro_value_to_json_t(value, 1, conf, cache);
   if (json == NULL) {
     return ENOMEM;
   }
@@ -344,7 +426,7 @@ static int avro_to_json(const avro_value_t *value, char **json_str,
   return 0;
 }
 
-static void process_file(const char *filename, const config *conf) {
+static void process_file(const char *filename, const config_t *conf) {
   avro_file_reader_t reader;
   if (avro_file_reader(filename, &reader)) {
     fprintf(stderr, "Error opening file '%s': %s\n", filename, avro_strerror());
@@ -357,11 +439,13 @@ static void process_file(const char *filename, const config *conf) {
   avro_value_t value;
   avro_generic_value_new(iface, &value);
 
+  cache_t *cache = cache_new();
+
   int rval;
   while ((rval = avro_file_reader_read_value(reader, &value)) == 0) {
     char *json;
 
-    if (avro_to_json(&value, &json, conf)) {
+    if (avro_to_json(&value, &json, conf, cache)) {
       fprintf(stderr, "Error converting value to JSON: %s\n", avro_strerror());
     } else {
       int ret = printf("%s\n", json);
@@ -383,6 +467,7 @@ static void process_file(const char *filename, const config *conf) {
   avro_value_decref(&value);
   avro_value_iface_decref(iface);
   avro_schema_decref(wschema);
+  cache_free(cache);
 }
 
 static void print_usage(const char *exe) {
@@ -390,26 +475,85 @@ static void print_usage(const char *exe) {
           "Usage: %s [OPTIONS] FILE\n"
           "\n"
           "Where options are:\n"
-          " --prune     Omit null values as well as empty lists and objects\n",
+          " --prune            Omit null values as well as empty lists and "
+          "objects\n"
+          " --logical-types    Convert logical types automatically\n"
+          " --columns 1,2,...  Only output specified columns numbers\n",
           exe);
   exit(1);
 }
 
-void main(int argc, char **argv) {
-  config conf = {.prune = 0};
+static int parse_columns_indices(char *cols_list, int32_t **columns,
+                                 size_t *columns_size) {
+  const char *p = cols_list;
+  size_t cols_num = 1;
+  while (*p) {
+    cols_num += *p++ == ',' ? 1 : 0;
+  }
+  int32_t *cols_indices = (int32_t *)malloc(sizeof(int32_t) * cols_num);
+  char *saveptr;
+  char *col = strtok_r(cols_list, ",", &saveptr);
+  int32_t *c = cols_indices;
+  do {
+    int col_idx = atoi(col);
+    if (col_idx <= 0) {
+      return EINVAL;
+      free(cols_indices);
+    }
+    *c++ = col_idx;
+    col = strtok_r(NULL, ",", &saveptr);
+  } while (col != NULL);
 
+  size_t size = 0;
+  for (int i = 0; i < cols_num; ++i) {
+    if (cols_indices[i] > size) {
+      size = cols_indices[i];
+    }
+  }
+  int32_t *cols = (int32_t *)malloc(sizeof(int32_t) * size);
+  memset(cols, 0, sizeof(int32_t) * size);
+  for (int i = 0; i < cols_num; ++i) {
+    cols[cols_indices[i] - 1] = 1;
+  }
+  free(cols_indices);
+  *columns = cols;
+  *columns_size = size;
+  return 0;
+}
+
+static const char *parse_args(int argc, char **argv, config_t *conf) {
   int arg_idx;
   for (arg_idx = 1; arg_idx < argc - 1; ++arg_idx) {
     if (!strcmp(argv[arg_idx], "--prune")) {
-      conf.prune = 1;
+      conf->prune = 1;
+    } else if (!strcmp(argv[arg_idx], "--logical-types")) {
+      conf->logical_types = 1;
+    } else if (!strcmp(argv[arg_idx], "--columns") && arg_idx < argc - 1) {
+      if (parse_columns_indices(argv[++arg_idx], &conf->columns,
+                                &conf->columns_size)) {
+        print_usage(argv[0]);
+      }
     } else {
       print_usage(argv[0]);
     }
   }
+
   if (arg_idx != argc - 1) {
     print_usage(argv[0]);
   }
 
-  process_file(argv[arg_idx], &conf);
-  exit(0);
+  return argv[arg_idx];
+}
+
+int main(int argc, char **argv) {
+  config_t conf = {
+      .prune = 0, .logical_types = 0, .columns = NULL, .columns_size = 0};
+
+  const char *file = parse_args(argc, argv, &conf);
+  process_file(file, &conf);
+
+  if (conf.columns) {
+    free(conf.columns);
+  }
+  return 0;
 }

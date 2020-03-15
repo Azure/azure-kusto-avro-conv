@@ -11,18 +11,28 @@ Utility that converts Avro files to JSON format.
 ### Prerequisites
 
  * CMake >= 3.12.
- * [Apache Avro for C](https://avro.apache.org/docs/current/api/c/index.html)
+ * Private fork of [Apache Avro for C](https://avro.apache.org/docs/current/api/c/index.html)
 
 To install all the required dependencies (in Ubuntu/Debian), run:
 
-    apt-get install libavro-dev libjansson-dev liblzma-dev libsnappy-dev zlib1g-dev
+    apt-get install libjansson-dev liblzma-dev libsnappy-dev zlib1g-dev libgmp-dev
+
+Build private Avro C fork that includes logical types support:
+
+    git clone https://github.com/spektom/avro.git
+    cd avro/lang/c
+    git checkout c_logical_types
+    mkdir build
+    cd build
+    cmake ..
+    make -j
 
 ### Compiling
 
     mkdir build
     cd build
     cmake ..
-    make
+    make -j
 
 Sometimes, `zlib` can't be found by CMake, in such cases it's required to set the path to the library explicitly using:
 
@@ -34,13 +44,14 @@ Sometimes, `zlib` can't be found by CMake, in such cases it's required to set th
 
  * Microsoft Visual Studio 2019.
  * CMake >= 3.12.
- * [vcpkg](https://github.com/microsoft/vcpkg)
+ * Private fork of [vcpkg](https://github.com/spektom/vcpkg/tree/avro_logical_types)
  * Apache Avro installed with `vcpkg` (see below).
 
 To install Apache Avro library, run:
 
-    git clone https://github.com/microsoft/vcpkg.git
+    git clone https://github.com/spektom/vcpkg.git
     cd vcpkg
+    git checkout avro_logical_types
     .\bootstrap-vcpkg.bat
     .\vcpkg install avro-c:x64-windows-static
 
