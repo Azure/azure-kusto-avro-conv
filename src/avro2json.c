@@ -1,9 +1,11 @@
 #include <avro.h>
+#include <avro/schema.h>
 #include <errno.h>
 #include <jansson.h>
 #include <stdlib.h>
 #include <string.h>
 
+#include "avro_private.h"
 #include "logical.h"
 
 #if defined(_WIN32) || defined(_WIN64)
@@ -13,6 +15,7 @@
 typedef struct {
   int prune;
   int logical_types;
+  int show_schema;
   int32_t *columns;
   size_t columns_size;
 } config_t;
@@ -426,6 +429,125 @@ static int avro_to_json(const avro_value_t *value, char **json_str,
   return 0;
 }
 
+// Nullable types are represented as UNION of NULL and target schema.
+// This function extracts the target schema from such a UNION.
+static avro_schema_t get_nullable_schema(avro_schema_t schema) {
+  if (is_avro_union(schema)) {
+    const struct avro_union_schema_t *uschema = avro_schema_to_union(schema);
+    if (uschema->branches->num_entries == 2) {
+      union {
+        st_data_t data;
+        avro_schema_t schema;
+      } val1;
+      st_lookup(uschema->branches, 0, &val1.data);
+
+      union {
+        st_data_t data;
+        avro_schema_t schema;
+      } val2;
+      st_lookup(uschema->branches, 1, &val2.data);
+
+      if (val2.schema->type == AVRO_NULL) {
+        schema = val1.schema;
+      } else if (val1.schema->type == AVRO_NULL) {
+        schema = val2.schema;
+      }
+    }
+  }
+  return schema;
+}
+
+static int print_schema(avro_schema_t schema) {
+  schema = get_nullable_schema(schema);
+
+  if (!is_avro_record(schema)) {
+    avro_set_error("Can't find root record schema");
+    return EINVAL;
+  }
+
+  struct avro_record_schema_t *record_schema = avro_schema_to_record(schema);
+  json_t *result = json_array();
+  if (result == NULL) {
+    avro_set_error("Cannot allocate JSON array");
+    return ENOMEM;
+  }
+
+  for (int i = 0; i < record_schema->fields->num_entries; i++) {
+    union {
+      st_data_t data;
+      struct avro_record_field_t *field;
+    } val;
+    st_lookup(record_schema->fields, i, &val.data);
+
+    avro_schema_t field_schema = get_nullable_schema(val.field->type);
+    avro_logical_schema_t *logical_type = avro_logical_schema(field_schema);
+
+    json_t *obj = json_object();
+    if (obj == NULL) {
+      avro_set_error("Cannot allocate JSON object");
+      return ENOMEM;
+    }
+    json_object_set_new(obj, "name", json_string(val.field->name));
+
+    int found_logical_type = 0;
+    if (logical_type != NULL) {
+      switch (logical_type->type) {
+      case AVRO_DECIMAL:
+        json_object_set_new(obj, "type", json_string("decimal"));
+        found_logical_type = 1;
+        break;
+      case AVRO_DATE:
+      case AVRO_TIME_MILLIS:
+      case AVRO_TIME_MICROS:
+      case AVRO_TIMESTAMP_MILLIS:
+      case AVRO_TIMESTAMP_MICROS:
+        json_object_set_new(obj, "type", json_string("datetime"));
+        found_logical_type = 1;
+        break;
+      case AVRO_DURATION:
+        json_object_set_new(obj, "type", json_string("timespan"));
+        found_logical_type = 1;
+        break;
+      }
+    }
+
+    if (!found_logical_type) {
+      switch (field_schema->type) {
+      case AVRO_FIXED:
+      case AVRO_NULL:
+      case AVRO_STRING:
+      case AVRO_ENUM:
+        json_object_set_new(obj, "type", json_string("string"));
+        break;
+      case AVRO_INT32:
+        json_object_set_new(obj, "type", json_string("int"));
+        break;
+      case AVRO_INT64:
+        json_object_set_new(obj, "type", json_string("long"));
+        break;
+      case AVRO_FLOAT:
+      case AVRO_DOUBLE:
+        json_object_set_new(obj, "type", json_string("real"));
+        break;
+      case AVRO_BOOLEAN:
+        json_object_set_new(obj, "type", json_string("bool"));
+        break;
+      case AVRO_BYTES:
+      default:
+        json_object_set_new(obj, "type", json_string("dynamic"));
+        break;
+      }
+    }
+    json_array_append_new(result, obj);
+  }
+
+  char *json_str =
+      json_dumps(result, JSON_ENCODE_ANY | JSON_COMPACT | JSON_ENSURE_ASCII);
+  json_decref(result);
+  printf("%s", json_str);
+  return EOF;
+}
+
 static void process_file(const char *filename, const config_t *conf) {
   avro_file_reader_t reader;
   if (avro_file_reader(filename, &reader)) {
@@ -433,41 +555,43 @@ static void process_file(const char *filename, const config_t *conf) {
     exit(1);
   }
 
-  avro_schema_t wschema = avro_file_reader_get_writer_schema(reader);
-  avro_value_iface_t *iface = avro_generic_class_from_schema(wschema);
-
-  avro_value_t value;
-  avro_generic_value_new(iface, &value);
-
-  cache_t *cache = cache_new();
-
   int rval;
-  while ((rval = avro_file_reader_read_value(reader, &value)) == 0) {
-    char *json;
+  avro_schema_t wschema = avro_file_reader_get_writer_schema(reader);
 
-    if (avro_to_json(&value, &json, conf, cache)) {
-      fprintf(stderr, "Error converting value to JSON: %s\n", avro_strerror());
-    } else {
-      int ret = printf("%s\n", json);
-      free(json);
-      if (ret < 0) {
-        rval = EOF;
-        break;
+  if (!conf->show_schema) {
+    avro_value_iface_t *iface = avro_generic_class_from_schema(wschema);
+    avro_value_t value;
+    avro_generic_value_new(iface, &value);
+    cache_t *cache = cache_new();
+
+    while ((rval = avro_file_reader_read_value(reader, &value)) == 0) {
+      char *json;
+
+      if (avro_to_json(&value, &json, conf, cache)) {
+        fprintf(stderr, "Error converting value to JSON: %s\n",
+                avro_strerror());
+      } else {
+        int ret = printf("%s\n", json);
+        free(json);
+        if (ret < 0) {
+          rval = EOF;
+          break;
+        }
       }
+
+      avro_value_reset(&value);
     }
 
-    avro_value_reset(&value);
+    avro_value_decref(&value);
+    avro_value_iface_decref(iface);
+    cache_free(cache);
+
+  } else {
+    rval = print_schema(wschema);
   }
 
-  if (rval != EOF) {
-    fprintf(stderr, "Error reading Avro file: %s\n", avro_strerror());
-  }
-
-  avro_file_reader_close(reader);
-  avro_value_decref(&value);
-  avro_value_iface_decref(iface);
   avro_schema_decref(wschema);
-  cache_free(cache);
+  avro_file_reader_close(reader);
 }
 
 static void print_usage(const char *exe) {
@@ -475,6 +599,7 @@ static void print_usage(const char *exe) {
           "Usage: %s [OPTIONS] FILE\n"
           "\n"
           "Where options are:\n"
+          " --show-schema      Only show Avro file schema, and exit\n"
           " --prune            Omit null values as well as empty lists and "
           "objects\n"
           " --logical-types    Convert logical types automatically\n"
@@ -528,6 +653,8 @@ static const char *parse_args(int argc, char **argv, config_t *conf) {
       conf->prune = 1;
     } else if (!strcmp(argv[arg_idx], "--logical-types")) {
       conf->logical_types = 1;
+    } else if (!strcmp(argv[arg_idx], "--show-schema")) {
+      conf->show_schema = 1;
     } else if (!strcmp(argv[arg_idx], "--columns") && arg_idx < argc - 1) {
       if (parse_columns_indices(argv[++arg_idx], &conf->columns,
                                 &conf->columns_size)) {
@@ -546,8 +673,11 @@ static const char *parse_args(int argc, char **argv, config_t *conf) {
 }
 
 int main(int argc, char **argv) {
-  config_t conf = {
-      .prune = 0, .logical_types = 0, .columns = NULL, .columns_size = 0};
+  config_t conf = {.prune = 0,
+                   .logical_types = 0,
+                   .show_schema = 0,
+                   .columns = NULL,
+                   .columns_size = 0};
 
   const char *file = parse_args(argc, argv, &conf);
   process_file(file, &conf);
