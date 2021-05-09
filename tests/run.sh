@@ -6,6 +6,7 @@ trap "rm -f $tmpfile" EXIT
 run_test() {
   tfile="$1.avro"
   efile="$2.json"
+  cfile="$2.csv"
   shift; shift
   set +e
   options="$@"
@@ -14,6 +15,13 @@ run_test() {
   ./avro2json $options "../tests/${tfile}" > $tmpfile
   if ! diff $tmpfile "../tests/${efile}"; then
     exit 1
+  fi
+
+  if [ -f ../tests/$cfile ]; then
+    ./avro2json $options --csv "../tests/${tfile}" > $tmpfile
+    if ! diff $tmpfile "../tests/${cfile}"; then
+      exit 1
+    fi
   fi
 }
 

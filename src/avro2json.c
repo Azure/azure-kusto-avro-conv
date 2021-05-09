@@ -127,7 +127,7 @@ static int isinf(double x) { return !isnan(x) && isnan(x - x); }
 
 #define CHECKED_PRINT(dest, str)                                               \
   do {                                                                         \
-    if (fprintf(dest, str) < 0) {                                              \
+    if (fprintf(dest, "%s", str) < 0) {                                        \
       return ferror(dest);                                                     \
     }                                                                          \
   } while (0)
@@ -162,7 +162,7 @@ static int avro_bytes_value_to_json_t(const avro_value_t *value, json_t **json,
     if (str == NULL) {
       return ENOMEM;
     }
-    CHECKED_ALLOC(*json, json_string(str));
+    CHECKED_ALLOC(*json, json_string_nocheck(str));
     return 0;
   }
 
@@ -171,7 +171,8 @@ static int avro_bytes_value_to_json_t(const avro_value_t *value, json_t **json,
   if (encode_utf8_bytes(bytes, size, &encoded, &encoded_size, cache)) {
     return ENOMEM;
   }
-  CHECKED_ALLOC(*json, json_stringn((const char *)encoded, encoded_size - 1));
+  CHECKED_ALLOC(*json,
+                json_stringn_nocheck((const char *)encoded, encoded_size - 1));
   return 0;
 }
 
@@ -197,7 +198,7 @@ static int avro_array_to_json_t(const avro_value_t *value, json_t **json,
       return rval;
     }
 
-    json_t *element_json;
+    json_t *element_json = NULL;
     if ((rval = avro_value_to_json_t(&element, &element_json, 0, conf,
                                      cache)) != 0) {
       json_decref(result);
@@ -240,14 +241,14 @@ static int avro_map_to_json_t(const avro_value_t *value, json_t **json,
       return rval;
     }
 
-    json_t *element_json;
+    json_t *element_json = NULL;
     if ((rval = avro_value_to_json_t(&element, &element_json, 0, conf,
                                      cache)) != 0) {
       json_decref(result);
       return rval;
     }
 
-    if ((rval = json_object_set_new(result, key, element_json)) != 0) {
+    if ((rval = json_object_set_new_nocheck(result, key, element_json)) != 0) {
       avro_set_error("Cannot append element to map");
       json_decref(element_json);
       json_decref(result);
@@ -282,11 +283,11 @@ static int avro_value_to_json_t(const avro_value_t *value, json_t **json,
     double val;
     CHECKED_EV(avro_value_get_double(value, &val));
     if (isinf(val)) {
-      CHECKED_ALLOC(*json, json_string("Infinity"));
+      CHECKED_ALLOC(*json, json_string_nocheck("Infinity"));
       return 0;
     }
     if (isnan(val)) {
-      CHECKED_ALLOC(*json, json_string("NaN"));
+      CHECKED_ALLOC(*json, json_string_nocheck("NaN"));
       return 0;
     }
     CHECKED_ALLOC(*json, json_real(val));
@@ -297,11 +298,11 @@ static int avro_value_to_json_t(const avro_value_t *value, json_t **json,
     float val;
     CHECKED_EV(avro_value_get_float(value, &val));
     if (isinf(val)) {
-      CHECKED_ALLOC(*json, json_string("Infinity"));
+      CHECKED_ALLOC(*json, json_string_nocheck("Infinity"));
       return 0;
     }
     if (isnan(val)) {
-      CHECKED_ALLOC(*json, json_string("NaN"));
+      CHECKED_ALLOC(*json, json_string_nocheck("NaN"));
       return 0;
     }
     CHECKED_ALLOC(*json, json_real(val));
@@ -319,11 +320,11 @@ static int avro_value_to_json_t(const avro_value_t *value, json_t **json,
 
     if (logical_type != NULL) {
       if (logical_type->type == AVRO_DATE) {
-        CHECKED_ALLOC(*json, json_string(epoch_days_to_str(val)));
+        CHECKED_ALLOC(*json, json_string_nocheck(epoch_days_to_str(val)));
         return 0;
       }
       if (logical_type->type == AVRO_TIME_MILLIS) {
-        CHECKED_ALLOC(*json, json_string(time_millis_to_str(val)));
+        CHECKED_ALLOC(*json, json_string_nocheck(time_millis_to_str(val)));
         return 0;
       }
       avro_set_error("INT type is annotated by an unsupported logical type");
@@ -344,15 +345,15 @@ static int avro_value_to_json_t(const avro_value_t *value, json_t **json,
 
     if (logical_type != NULL) {
       if (logical_type->type == AVRO_TIME_MICROS) {
-        CHECKED_ALLOC(*json, json_string(time_micros_to_str(val)));
+        CHECKED_ALLOC(*json, json_string_nocheck(time_micros_to_str(val)));
         return 0;
       }
       if (logical_type->type == AVRO_TIMESTAMP_MILLIS) {
-        CHECKED_ALLOC(*json, json_string(timestamp_millis_to_str(val)));
+        CHECKED_ALLOC(*json, json_string_nocheck(timestamp_millis_to_str(val)));
         return 0;
       }
       if (logical_type->type == AVRO_TIMESTAMP_MICROS) {
-        CHECKED_ALLOC(*json, json_string(timestamp_micros_to_str(val)));
+        CHECKED_ALLOC(*json, json_string_nocheck(timestamp_micros_to_str(val)));
         return 0;
       }
       avro_set_error("LONG type is annotated by an unsupported logical type");
@@ -433,7 +434,7 @@ static int avro_value_to_json_t(const avro_value_t *value, json_t **json,
         return rval;
       }
 
-      json_t *field_json;
+      json_t *field_json = NULL;
       if ((rval = avro_value_to_json_t(&field, &field_json, 0, conf, cache)) !=
           0) {
         json_decref(result);
@@ -448,7 +449,9 @@ static int avro_value_to_json_t(const avro_value_t *value, json_t **json,
         continue;
       }
 
-      if ((rval = json_object_set_new(result, field_name, field_json)) != 0) {
+      if ((rval = json_object_set_new_nocheck(result, field_name,
+                                              field_json)) != 0) {
+        json_decref(field_json);
         json_decref(result);
         return rval;
       }
@@ -476,7 +479,7 @@ static int avro_file_to_json(avro_file_reader_t reader, avro_schema_t wschema,
 
   int rval = 0;
   while (avro_file_reader_read_value(reader, &value) == 0) {
-    json_t *json;
+    json_t *json = NULL;
     if ((rval = avro_value_to_json_t(&value, &json, 1, conf, cache)) != 0) {
       break;
     }
@@ -515,12 +518,18 @@ static int write_escape_quotes(FILE *dest, const char *str, size_t size) {
 
 static int write_escaped_str_to_csv(FILE *dest, const char *str, size_t size) {
   if (size > 0) {
-    if (fputc('"', dest) < 0) {
-      return ferror(dest);
-    }
-    write_escape_quotes(dest, str, size);
-    if (fputc('"', dest) < 0) {
-      return ferror(dest);
+    if (!memchr(str, '"', size) && !memchr(str, ',', size)) {
+      if (fwrite(str, size, 1, dest) < 1) {
+        return ferror(dest);
+      }
+    } else {
+      if (fputc('"', dest) < 0) {
+        return ferror(dest);
+      }
+      write_escape_quotes(dest, str, size);
+      if (fputc('"', dest) < 0) {
+        return ferror(dest);
+      }
     }
   }
   return 0;
@@ -563,10 +572,7 @@ static int avro_bytes_value_to_csv(FILE *dest, const avro_value_t *value,
     return 0;
   }
 
-  void *encoded = NULL;
-  size_t encoded_size = 0;
-  CHECKED_EV(encode_utf8_bytes(bytes, size, &encoded, &encoded_size, cache));
-  return write_escaped_str_to_csv(dest, (const char *)encoded, encoded_size);
+  return write_escaped_str_to_csv(dest, (const char *)bytes, size);
 }
 
 static int avro_value_to_csv(FILE *dest, const avro_value_t *value,
@@ -638,7 +644,7 @@ static int avro_value_to_csv(FILE *dest, const avro_value_t *value,
       avro_set_error("INT type is annotated by an unsupported logical type");
       return EINVAL;
     }
-    CHECKED_PRINTF(dest, "%" JSON_INTEGER_FORMAT, (int64_t)val);
+    CHECKED_PRINTF(dest, "%" JSON_INTEGER_FORMAT, (long long int)val);
     return 0;
   }
 
@@ -667,7 +673,7 @@ static int avro_value_to_csv(FILE *dest, const avro_value_t *value,
       avro_set_error("LONG type is annotated by an unsupported logical type");
       return EINVAL;
     }
-    CHECKED_PRINTF(dest, "%" JSON_INTEGER_FORMAT, val);
+    CHECKED_PRINTF(dest, "%" JSON_INTEGER_FORMAT, (long long int)val);
     return 0;
   }
 
@@ -729,11 +735,12 @@ static int avro_value_to_csv(FILE *dest, const avro_value_t *value,
       CHECKED_EV(avro_value_get_size(value, &field_count));
 
       int filter_cols = conf->columns_size > 0;
+      int printed = 0;
       for (size_t i = 0; i < field_count; i++) {
         if (filter_cols && (i >= conf->columns_size || !conf->columns[i])) {
           continue;
         }
-        if (i > 0) {
+        if (printed) {
           if (fputc(',', dest) < 0) {
             return ferror(dest);
           }
@@ -743,6 +750,7 @@ static int avro_value_to_csv(FILE *dest, const avro_value_t *value,
         avro_value_t field;
         CHECKED_EV(avro_value_get_by_index(value, i, &field, &field_name));
         CHECKED_EV(avro_value_to_csv(dest, &field, 0, conf, cache));
+        printed = 1;
       }
       return 0;
     }
@@ -852,7 +860,7 @@ static int print_schema(avro_schema_t schema) {
     if (logical_type != NULL) {
       switch (logical_type->type) {
       case AVRO_DECIMAL:
-        json_object_set_new(obj, "type", json_string("decimal"));
+        json_object_set_new(obj, "type", json_string_nocheck("decimal"));
         found_logical_type = 1;
         break;
       case AVRO_DATE:
@@ -860,11 +868,11 @@ static int print_schema(avro_schema_t schema) {
       case AVRO_TIME_MICROS:
       case AVRO_TIMESTAMP_MILLIS:
       case AVRO_TIMESTAMP_MICROS:
-        json_object_set_new(obj, "type", json_string("datetime"));
+        json_object_set_new(obj, "type", json_string_nocheck("datetime"));
         found_logical_type = 1;
         break;
       case AVRO_DURATION:
-        json_object_set_new(obj, "type", json_string("timespan"));
+        json_object_set_new(obj, "type", json_string_nocheck("timespan"));
         found_logical_type = 1;
         break;
       }
@@ -876,24 +884,24 @@ static int print_schema(avro_schema_t schema) {
       case AVRO_NULL:
       case AVRO_STRING:
       case AVRO_ENUM:
-        json_object_set_new(obj, "type", json_string("string"));
+        json_object_set_new(obj, "type", json_string_nocheck("string"));
         break;
       case AVRO_INT32:
-        json_object_set_new(obj, "type", json_string("int"));
+        json_object_set_new(obj, "type", json_string_nocheck("int"));
         break;
       case AVRO_INT64:
-        json_object_set_new(obj, "type", json_string("long"));
+        json_object_set_new(obj, "type", json_string_nocheck("long"));
         break;
       case AVRO_FLOAT:
       case AVRO_DOUBLE:
-        json_object_set_new(obj, "type", json_string("real"));
+        json_object_set_new(obj, "type", json_string_nocheck("real"));
         break;
       case AVRO_BOOLEAN:
-        json_object_set_new(obj, "type", json_string("bool"));
+        json_object_set_new(obj, "type", json_string_nocheck("bool"));
         break;
       case AVRO_BYTES:
       default:
-        json_object_set_new(obj, "type", json_string("dynamic"));
+        json_object_set_new(obj, "type", json_string_nocheck("dynamic"));
         break;
       }
     }
