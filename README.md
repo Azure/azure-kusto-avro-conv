@@ -38,10 +38,11 @@ Build private Avro C fork that includes logical types support:
 
 ### Prerequisites
 
- * Microsoft Visual Studio 2019.
+ * Microsoft Visual Studio 2019/2021.
  * CMake >= 3.12.
- * Private fork of [vcpkg](https://github.com/spektom/vcpkg/tree/avro_logical_types)
+ * [Private fork](https://github.com/spektom/vcpkg/tree/avro_logical_types) of VCPKG.
  * Apache Avro installed with `vcpkg` (see below).
+ * GMP library (mpir) installed with `vcpkg` (see below).
 
 To install Apache Avro library, run:
 
@@ -50,6 +51,7 @@ To install Apache Avro library, run:
     git checkout avro_logical_types
     .\bootstrap-vcpkg.bat
     .\vcpkg install avro-c:x64-windows-static
+    .\vcpkg install mpir:x64-windows-static
 
 ### Compiling
 
