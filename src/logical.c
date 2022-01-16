@@ -238,7 +238,6 @@ char *timestamp_micros_to_str(int64_t micros) {
   dt.tm_year = 70;
   dt.tm_mon = 0;
   dt.tm_mday = 1;
-  mktime(&dt);
 
   dt.tm_sec = (int32_t)(micros / MICROS_IN_SEC);
   if (mktime(&dt) == -1) {
