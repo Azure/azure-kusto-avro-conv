@@ -939,8 +939,6 @@ static void print_usage(const char *exe) {
           "\n"
           "Where options are:\n"
           " --show-schema      Only show Avro file schema, and exit\n"
-          " --prune            Omit null values as well as empty lists and "
-          "objects\n"
           " --logical-types    Convert logical types automatically\n"
           " --columns 1,2,...  Only output specified columns numbers\n",
           exe);
