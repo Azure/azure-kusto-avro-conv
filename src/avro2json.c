@@ -13,7 +13,6 @@
 #endif
 
 typedef struct {
-  int prune;
   int logical_types;
   int show_schema;
   int output_csv;
@@ -441,10 +440,9 @@ static int avro_value_to_json_t(const avro_value_t *value, json_t **json,
         return rval;
       }
 
-      if (conf->prune &&
-          (json_is_null(field_json) ||
+      if (json_is_null(field_json) ||
            (json_is_object(field_json) && !json_object_size(field_json)) ||
-           (json_is_array(field_json) && !json_array_size(field_json)))) {
+           (json_is_array(field_json) && !json_array_size(field_json))) {
         json_decref(field_json);
         continue;
       }
@@ -693,7 +691,7 @@ static int avro_value_to_csv(FILE *dest, const avro_value_t *value,
     json_t *result = NULL;
     CHECKED_EV(avro_array_to_json_t(value, &result, conf, cache));
     int rval = 0;
-    if (!conf->prune || json_array_size(result)) {
+    if (json_array_size(result)) {
       rval = json_dump_to_csv(dest, result, JSON_ENCODE_FLAGS);
     }
     json_decref(result);
@@ -722,7 +720,7 @@ static int avro_value_to_csv(FILE *dest, const avro_value_t *value,
     json_t *result = NULL;
     CHECKED_EV(avro_map_to_json_t(value, &result, conf, cache));
     int rval = 0;
-    if (!conf->prune || json_object_size(result)) {
+    if (json_object_size(result)) {
       rval = json_dump_to_csv(dest, result, JSON_ENCODE_FLAGS);
     }
     json_decref(result);
@@ -758,7 +756,7 @@ static int avro_value_to_csv(FILE *dest, const avro_value_t *value,
     json_t *record;
     CHECKED_EV(avro_value_to_json_t(value, &record, 0, conf, cache));
     int rval = 0;
-    if (!conf->prune || json_object_size(record)) {
+    if (json_object_size(record)) {
       rval = json_dump_to_csv(dest, record, JSON_ENCODE_FLAGS);
     }
     json_decref(record);
@@ -990,9 +988,7 @@ static int parse_columns_indices(char *cols_list, int32_t **columns,
 static const char *parse_args(int argc, char **argv, config_t *conf) {
   int arg_idx;
   for (arg_idx = 1; arg_idx < argc - 1; ++arg_idx) {
-    if (!strcmp(argv[arg_idx], "--prune")) {
-      conf->prune = 1;
-    } else if (!strcmp(argv[arg_idx], "--logical-types")) {
+    if (!strcmp(argv[arg_idx], "--logical-types")) {
       conf->logical_types = 1;
     } else if (!strcmp(argv[arg_idx], "--show-schema")) {
       conf->show_schema = 1;
@@ -1016,8 +1012,7 @@ static const char *parse_args(int argc, char **argv, config_t *conf) {
 }
 
 int main(int argc, char **argv) {
-  config_t conf = {.prune = 0,
-                   .logical_types = 0,
+  config_t conf = {.logical_types = 0,
                    .show_schema = 0,
                    .output_csv = 0,
                    .columns = NULL,
