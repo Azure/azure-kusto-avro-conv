@@ -3,6 +3,9 @@
 #include <errno.h>
 #include <jansson.h>
 #include <stdlib.h>
+#if defined(_WIN32)
+#include <jemalloc.h>
+#endif
 #include <string.h>
 
 #include "avro_private.h"
@@ -1015,7 +1018,46 @@ static const char *parse_args(int argc, char **argv, config_t *conf) {
   return argv[arg_idx];
 }
 
+#if defined(_WIN32)
+#define AVRO2JSON_UNUSED(var) (void)var;
+
+/*
+ * Allocation interface.  You can provide a custom allocator for the
+ * library, should you wish.  The allocator is provided as a single
+ * generic function, which can emulate the standard malloc, realloc, and
+ * free functions.  The design of this allocation interface is inspired
+ * by the implementation of the Lua interpreter.
+ *
+ * The ptr parameter will be the location of any existing memory
+ * buffer.  The osize parameter will be the size of this existing
+ * buffer.  If ptr is NULL, then osize will be 0.  The nsize parameter
+ * will be the size of the new buffer, or 0 if the new buffer should be
+ * freed.
+ *
+ * If nsize is 0, then the allocation function must return NULL.  If
+ * nsize is not 0, then it should return NULL if the allocation fails.
+ */
+static void *
+custom_jemalloc_allocator(void *ud, void *ptr, size_t osize, size_t nsize)
+{
+	AVRO2JSON_UNUSED(ud);
+	AVRO2JSON_UNUSED(osize);
+
+	if (nsize == 0) {
+    je_free(ptr);
+    return NULL;
+	} else {
+    return je_realloc(ptr, nsize);
+	}
+}
+#endif
+
 int main(int argc, char **argv) {
+
+#if defined(_WIN32)
+  avro_set_allocator(custom_jemalloc_allocator, NULL);
+#endif
+
   config_t conf = {.prune = 0,
                    .logical_types = 0,
                    .show_schema = 0,
