@@ -36,7 +36,8 @@ endif (WIN32)
 
 target_include_directories(avro2json
   PRIVATE ${AVRO_INCLUDE_DIR}
-  PRIVATE ${ADDITIONAL_INCLUDE_DIRS})
+  PRIVATE ${ADDITIONAL_INCLUDE_DIRS}
+)
 
 target_link_libraries(avro2json
   ${AVRO_LIBRARY}
@@ -46,4 +47,5 @@ target_link_libraries(avro2json
   ${ZLIB_LIBRARY}
   ${SNAPPY_LIBRARY}
   ${GMP_LIBRARY}
-  ${MATH_LIBRARY})
+  ${MATH_LIBRARY}
+)

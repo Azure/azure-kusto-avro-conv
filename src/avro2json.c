@@ -1019,8 +1019,6 @@ static const char *parse_args(int argc, char **argv, config_t *conf) {
 }
 
 #if defined(_WIN32)
-#define AVRO2JSON_UNUSED(var) (void)var;
-
 /*
  * Allocation interface.  You can provide a custom allocator for the
  * library, should you wish.  The allocator is provided as a single
@@ -1040,21 +1038,23 @@ static const char *parse_args(int argc, char **argv, config_t *conf) {
 static void *
 custom_jemalloc_allocator(void *ud, void *ptr, size_t osize, size_t nsize)
 {
-	AVRO2JSON_UNUSED(ud);
-	AVRO2JSON_UNUSED(osize);
+  // Unused params
+  (void)ud;
+  (void)osize;
 
-	if (nsize == 0) {
+  if (nsize == 0) {
     je_free(ptr);
     return NULL;
-	} else {
+  } else {
     return je_realloc(ptr, nsize);
-	}
+  }
 }
 #endif
 
 int main(int argc, char **argv) {
 
 #if defined(_WIN32)
+/* Currently provided only for Windows, since it was tested only on Windows. */
   avro_set_allocator(custom_jemalloc_allocator, NULL);
 #endif
 
