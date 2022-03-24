@@ -43,6 +43,7 @@ Build private Avro C fork that includes logical types support:
  * [Private fork](https://github.com/spektom/vcpkg/tree/avro_logical_types) of VCPKG.
  * Apache Avro installed with `vcpkg` (see below).
  * GMP library (mpir) installed with `vcpkg` (see below).
+ * Jemalloc library installed with `vcpkg` (see below).
 
 To install Apache Avro library, run:
 
@@ -52,13 +53,13 @@ To install Apache Avro library, run:
     .\bootstrap-vcpkg.bat
     .\vcpkg install avro-c:x64-windows-static
     .\vcpkg install mpir:x64-windows-static
+    .\vcpkg install jemalloc:x64-windows-release
 
 ### Compiling
 
-    mkdir build
-    cd build
-    cmake -DVCPKG_TARGET_TRIPLET=x64-windows-static -DCMAKE_TOOLCHAIN_FILE=C:\<path to>\vcpkg\scripts\buildsystems\vcpkg.cmake -A x64 ..
-    msbuild azure-kust-avro-conv.sln /p:Configuration=Release
+    .\build.bat <Build Configuration> <VCPKG_DIR> <MSBUILD_DIR> <CMAKE_DIR>
+
+    Example: .\build.bat Release C:\repos\vcpkg "C:\Program Files (x86)\Microsoft Visual Studio\2019\Enterprise\MSBuild\Current\Bin" "C:\Program Files\CMake\bin"
 
 ## Contributing
 
