@@ -143,9 +143,10 @@ static int isinf(double x) { return !isnan(x) && isnan(x - x); }
     }                                                                          \
   } while (0)
 
-
+// Guid is formatted as 36 characters (32 nibbles plus 4 hyphens): xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx
+// The byte order is a bit tricky https://stackoverflow.com/questions/10862171/convert-byte-or-object-to-guid
 #define GUID_FORMAT "%02hhX%02hhX%02hhX%02hhX-%02hhX%02hhX-%02hhX%02hhX-%02hhX%02hhX-%02hhX%02hhX%02hhX%02hhX%02hhX%02hhX"
-#define GUID_ARG(guid) (guid)[0], (guid)[1], (guid)[2], (guid)[3] , (guid)[4], (guid)[5], (guid)[6], (guid)[7], (guid)[8], (guid)[9], (guid)[10], (guid)[11], (guid)[12], (guid)[13], (guid)[14], (guid)[15]
+#define GUID_ARG(guid) (guid)[3], (guid)[2], (guid)[1], (guid)[0] , (guid)[5], (guid)[4], (guid)[7], (guid)[6], (guid)[8], (guid)[9], (guid)[10], (guid)[11], (guid)[12], (guid)[13], (guid)[14], (guid)[15]
 
 static int avro_value_to_json_t(const avro_value_t *value, json_t **json,
                                 int top_level, const config_t *conf,
@@ -406,6 +407,21 @@ static int avro_value_to_json_t(const avro_value_t *value, json_t **json,
     const void *val;
     size_t size;
     CHECKED_EV(avro_value_get_fixed(value, &val, &size));
+
+    if(conf->ms_hadoop_logical_types && size == 16){
+      avro_schema_t schema = avro_value_get_schema(value);
+      const char *name = avro_schema_name(schema);
+      const char *namespace = avro_schema_namespace(schema);
+
+      if(!strcmp(namespace, "System") && !strcmp(name, "Guid")){
+        char guid_val[37]; // Guid is formatted as 36 characters (32 nibbles plus 4 hyphens): xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx
+
+        sprintf(guid_val, GUID_FORMAT, GUID_ARG((char*)val));
+        CHECKED_ALLOC(*json, json_stringn(guid_val, 36));
+        return 0;
+      }
+    }
+
     CHECKED_EV(avro_bytes_value_to_json_t(value, json, val, size, conf, cache));
     return 0;
   }
