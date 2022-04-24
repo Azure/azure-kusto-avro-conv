@@ -414,7 +414,7 @@ static int avro_value_to_json_t(const avro_value_t *value, json_t **json,
       const char *namespace = avro_schema_namespace(schema);
 
       if(!strcmp(namespace, "System") && !strcmp(name, "Guid")){
-        char guid_val[37]; // Guid is formatted as 36 characters (32 nibbles plus 4 hyphens): xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx
+        char guid_val[37]; // Guid is formatted as 36 characters (32 nibbles plus 4 hyphens): xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx, and we need a null-terminator
 
         sprintf(guid_val, GUID_FORMAT, GUID_ARG((char*)val));
         CHECKED_ALLOC(*json, json_stringn(guid_val, 36));
