@@ -148,6 +148,12 @@ static int isinf(double x) { return !isnan(x) && isnan(x - x); }
 #define GUID_FORMAT "%02hhX%02hhX%02hhX%02hhX-%02hhX%02hhX-%02hhX%02hhX-%02hhX%02hhX-%02hhX%02hhX%02hhX%02hhX%02hhX%02hhX"
 #define GUID_ARG(guid) (guid)[3], (guid)[2], (guid)[1], (guid)[0], (guid)[5], (guid)[4], (guid)[7], (guid)[6], (guid)[8], (guid)[9], (guid)[10], (guid)[11], (guid)[12], (guid)[13], (guid)[14], (guid)[15]
 
+static int is_ms_hadoop_logical_type_guid(avro_schema_t schema, size_t size){
+  const char *name = avro_schema_name(schema);
+  const char *namespace = avro_schema_namespace(schema);
+  return size == 16 && !strcmp(namespace, "System") && !strcmp(name, "Guid");
+}
+
 static int avro_value_to_json_t(const avro_value_t *value, json_t **json,
                                 int top_level, const config_t *conf,
                                 cache_t *cache);
@@ -408,12 +414,8 @@ static int avro_value_to_json_t(const avro_value_t *value, json_t **json,
     size_t size;
     CHECKED_EV(avro_value_get_fixed(value, &val, &size));
 
-    if(conf->ms_hadoop_logical_types && size == 16){
-      avro_schema_t schema = avro_value_get_schema(value);
-      const char *name = avro_schema_name(schema);
-      const char *namespace = avro_schema_namespace(schema);
-
-      if(!strcmp(namespace, "System") && !strcmp(name, "Guid")){
+    if (conf->ms_hadoop_logical_types){
+      if (is_ms_hadoop_logical_type_guid(avro_value_get_schema(value), size)){
         char guid_val[37]; // Guid is formatted as 36 characters (32 nibbles plus 4 hyphens): xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx, and we need a null-terminator
 
         sprintf(guid_val, GUID_FORMAT, GUID_ARG((char*)val));
@@ -740,12 +742,8 @@ static int avro_value_to_csv(FILE *dest, const avro_value_t *value,
     size_t size;
     CHECKED_EV(avro_value_get_fixed(value, &val, &size));
 
-    if(conf->ms_hadoop_logical_types && size == 16){
-      avro_schema_t schema = avro_value_get_schema(value);
-      const char *name = avro_schema_name(schema);
-      const char *namespace = avro_schema_namespace(schema);
-
-      if(!strcmp(namespace, "System") && !strcmp(name, "Guid")){
+    if (conf->ms_hadoop_logical_types){
+      if (is_ms_hadoop_logical_type_guid(avro_value_get_schema(value), size)){
         CHECKED_PRINTF(dest, GUID_FORMAT, GUID_ARG((char*)val));
         return 0;
       }
@@ -979,7 +977,7 @@ static void print_usage(const char *exe) {
           " --prune            Omit null values as well as empty lists and "
           "objects\n"
           " --logical-types    Convert logical types automatically\n"
-          " --ms-hadoop-logical-types    Convert non-standard logical types of Microsoft.Hadoop.Avro (System.Guid, System.DateTime, System.TimeSpan) automatically\n"
+          " --ms-hadoop-logical-types    Convert non-standard logical types of Microsoft.Hadoop.Avro (System.Guid) automatically\n"
           " --columns 1,2,...  Only output specified columns numbers\n",
           exe);
   exit(1);
