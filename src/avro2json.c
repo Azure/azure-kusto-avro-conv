@@ -144,7 +144,7 @@ static int isinf(double x) { return !isnan(x) && isnan(x - x); }
   } while (0)
 
 // Guid is formatted as 36 characters (32 nibbles plus 4 hyphens): xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx
-// The byte order is a bit tricky https://stackoverflow.com/questions/10862171/convert-byte-or-object-to-guid
+// The byte order is a bit tricky: https://stackoverflow.com/questions/10862171/convert-byte-or-object-to-guid
 #define GUID_FORMAT "%02hhX%02hhX%02hhX%02hhX-%02hhX%02hhX-%02hhX%02hhX-%02hhX%02hhX-%02hhX%02hhX%02hhX%02hhX%02hhX%02hhX"
 #define GUID_ARG(guid) (guid)[3], (guid)[2], (guid)[1], (guid)[0] , (guid)[5], (guid)[4], (guid)[7], (guid)[6], (guid)[8], (guid)[9], (guid)[10], (guid)[11], (guid)[12], (guid)[13], (guid)[14], (guid)[15]
 
