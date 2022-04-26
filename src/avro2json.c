@@ -151,9 +151,7 @@ static int isinf(double x) { return !isnan(x) && isnan(x - x); }
 static int is_ms_hadoop_logical_type_guid(const avro_value_t *value, size_t size) {
   if (size == 16) {
     avro_schema_t schema = avro_value_get_schema(value);
-    const char *name = avro_schema_name(schema);
-    const char *namespace = avro_schema_namespace(schema);
-    return !strcmp(namespace, "System") && !strcmp(name, "Guid");
+    return !strcmp(avro_schema_namespace(schema), "System") && !strcmp(avro_schema_name(schema), "Guid");
   }
   return 0;
 }
