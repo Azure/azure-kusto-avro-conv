@@ -7,6 +7,7 @@
 #include <jemalloc.h>
 #endif
 #include <string.h>
+#include <math.h>
 
 #include "avro_private.h"
 #include "logical.h"
@@ -419,7 +420,7 @@ static int avro_value_to_json_t(const avro_value_t *value, json_t **json,
     if (conf->ms_hadoop_logical_types && is_ms_hadoop_logical_type_guid(value, size)) {
         char guid_val[37]; // Guid is formatted as 36 characters (32 nibbles plus 4 hyphens): xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx, and we need a null-terminator
 
-        sprintf(guid_val, GUID_FORMAT, GUID_ARG((char*)val));
+        snprintf(guid_val, 37, GUID_FORMAT, GUID_ARG((char*)val));
         CHECKED_ALLOC(*json, json_stringn(guid_val, 36));
         return 0;
     }
@@ -630,7 +631,15 @@ static int avro_value_to_csv(FILE *dest, const avro_value_t *value,
       CHECKED_PRINT(dest, "NaN");
       return 0;
     }
-    CHECKED_PRINTF(dest, "%.17g", val);
+
+    /* check if fractional part is 0 */
+    double i;
+    if (modf(val, &i) == 0.0) {
+      CHECKED_PRINTF(dest, "%.0f", val);
+    } else {
+      CHECKED_PRINTF(dest, "%.17g", val);
+    }
+
     return 0;
   }
 
@@ -645,7 +654,14 @@ static int avro_value_to_csv(FILE *dest, const avro_value_t *value,
       CHECKED_PRINT(dest, "NaN");
       return 0;
     }
-    CHECKED_PRINTF(dest, "%.17g", val);
+
+    /* check if fractional part is 0 */
+    float i;
+    if (modff(val, &i) == 0.0) {
+      CHECKED_PRINTF(dest, "%.0f", val);
+    } else {
+      CHECKED_PRINTF(dest, "%.17g", val);
+    }
     return 0;
   }
 
