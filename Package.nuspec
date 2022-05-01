@@ -17,5 +17,6 @@
   </metadata>
   <files>
       <file src="build\Release\avro2json.exe" target="tools\x64" />
+      <file src="build\Release\jemalloc.dll" target="tools\x64" />
   </files>
 </package>
