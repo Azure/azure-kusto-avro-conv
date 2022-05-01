@@ -31,7 +31,7 @@ Build private Avro C fork that includes logical types support:
 
     mkdir build
     cd build
-    cmake -DZLIB_LIBRARY=/usr/lib/x86_64-linux-gnu/libz.a -DAVRO_LIBRARY=../../avro/lang/c/build/src/libavro.a -DAVRO_INCLUDE_DIR=../../avro/lang/c/src ..
+    cmake -DAVRO_LIBRARY=../../avro/lang/c/build/src/libavro.a -DAVRO_INCLUDE_DIR=../../avro/lang/c/src ..
     make -j
 
 ## Building in Windows
