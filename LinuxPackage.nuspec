@@ -1,0 +1,21 @@
+<?xml version="1.0"?>
+<package xmlns="http://schemas.microsoft.com/packaging/2013/05/nuspec.xsd">
+  <metadata>
+    <id>avro2json_linux</id>
+    <version>0.1.7</version>
+    <authors>Michael Spector</authors>
+    <owners>Michael Spector</owners>
+    <license type="expression">MIT</license>
+    <projectUrl>https://github.com/Azure/azure-kusto-avro-conv</projectUrl>
+    <requireLicenseAcceptance>false</requireLicenseAcceptance>
+    <description>Avro to JSON converter tool.</description>
+    <releaseNotes>Add an option for emitting CSV</releaseNotes>
+    <copyright>Copyright 2020</copyright>
+    <tags>utility avro json parsing</tags>
+    <dependencies>
+    </dependencies>
+  </metadata>
+  <files>
+      <file src="build\Release\avro2json.exe" target="tools\linux" />
+  </files>
+</package>
