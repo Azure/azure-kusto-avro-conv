@@ -561,6 +561,25 @@ static int write_escaped_str_to_csv(FILE *dest, const char *str, size_t size) {
   return 0;
 }
 
+static int write_byte_array_to_csv(FILE *dest, const char *str, size_t size) {
+  if (fprintf(dest, "\"[") < 0) {
+    return ferror(dest);
+  }
+  for (int i = 0; i < size; ++i) {
+    fprintf(dest, "%d", (unsigned char)str[i]);
+
+    if(i != size -1){
+      if (fputc(',', dest) < 0) {
+        return ferror(dest);
+      }
+    }
+  }
+  if (fprintf(dest, "]\"") < 0) {
+    return ferror(dest);
+  }
+  return 0;
+}
+
 static int dump_to_csv(const char *buffer, size_t size, void *data) {
   return write_escape_quotes((FILE *)data, buffer, size);
 }
@@ -598,7 +617,7 @@ static int avro_bytes_value_to_csv(FILE *dest, const avro_value_t *value,
     return 0;
   }
 
-  return write_escaped_str_to_csv(dest, (const char *)bytes, size);
+  return write_byte_array_to_csv(dest, (const char *)bytes, size);
 }
 
 static int avro_value_to_csv(FILE *dest, const avro_value_t *value,
