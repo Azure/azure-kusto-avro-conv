@@ -15,7 +15,7 @@ Utility that converts Avro files to JSON format.
 
 To install all the required dependencies (in Ubuntu/Debian), run:
 
-    apt-get install libjansson-dev liblzma-dev libsnappy-dev zlib1g-dev libgmp-dev
+    apt-get install libjansson-dev liblzma-dev libsnappy-dev zlib1g-dev libgmp-dev pkg-config
 
 Build private Avro C fork that includes logical types support:
 
