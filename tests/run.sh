@@ -13,13 +13,13 @@ run_test() {
 
   echo "Running: ./avro2json $options ../tests/${tfile}"
   ./avro2json $options "../tests/${tfile}" > $tmpfile
-  if ! diff $tmpfile "../tests/${efile}"; then
+  if ! diff -a $tmpfile "../tests/${efile}"; then
     exit 1
   fi
 
   if [ -f ../tests/$cfile ]; then
     ./avro2json $options --csv "../tests/${tfile}" > $tmpfile
-    if ! diff $tmpfile "../tests/${cfile}"; then
+    if ! diff -a $tmpfile "../tests/${cfile}"; then
       exit 1
     fi
   fi
