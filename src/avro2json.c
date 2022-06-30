@@ -562,21 +562,17 @@ static int write_escaped_str_to_csv(FILE *dest, const char *str, size_t size) {
 }
 
 static int write_byte_array_to_csv(FILE *dest, const char *str, size_t size) {
-  if (fprintf(dest, "\"[") < 0) {
-    return ferror(dest);
-  }
+  CHECKED_PRINT(dest, "\"[");
   for (int i = 0; i < size; ++i) {
-    fprintf(dest, "%d", (unsigned char)str[i]);
+    CHECKED_PRINTF(dest, "%d", (unsigned char)str[i]);
 
-    if(i != size -1){
+    if(i != size - 1){
       if (fputc(',', dest) < 0) {
         return ferror(dest);
       }
     }
   }
-  if (fprintf(dest, "]\"") < 0) {
-    return ferror(dest);
-  }
+  CHECKED_PRINT(dest, "]\"");
   return 0;
 }
 
