@@ -103,6 +103,37 @@ static int encode_utf8_bytes(const void *src, size_t src_len, void **dest,
   return 0;
 }
 
+char *byte_array_to_str(const char *bytes, size_t size, char **buf, size_t *buf_size) {
+
+  // Need up to 3 chars to print a byte value (0..255), (size - 1) commas, 2 characters square brackets and NULL terminator
+  size_t str_max_size = 3 * size + (size - 1) + 2 + 1;
+
+  if (*buf == NULL || *buf_size < str_max_size) {
+    *buf = (char *)realloc(*buf, str_max_size);
+    if (*buf == NULL) {
+      return NULL;
+    }
+  }
+  char *str = *buf;
+
+  int length = 0;
+  length += snprintf(str, str_max_size, "[");
+
+  for (int i = 0; i < size; ++i) {
+    length += snprintf(str + length, str_max_size - length, "%d", (unsigned char)bytes[i]);
+
+    if(i != size - 1){
+        length += snprintf(str + length, str_max_size - length, ",");
+    }
+  }
+  length += snprintf(str + length, str_max_size - length, "]");
+
+  *buf_size = length;
+
+  return str;
+}
+
+
 #ifndef isnan
 #ifndef __sun
 static int isnan(double x) { return x != x; }
@@ -183,13 +214,11 @@ static int avro_bytes_value_to_json_t(const avro_value_t *value, json_t **json,
     return 0;
   }
 
-  void *encoded = NULL;
-  size_t encoded_size = 0;
-  if (encode_utf8_bytes(bytes, size, &encoded, &encoded_size, cache)) {
+  char *str = byte_array_to_str(bytes, size, &cache->str, &cache->str_size);
+  if (str == NULL) {
     return ENOMEM;
   }
-  CHECKED_ALLOC(*json,
-                json_stringn_nocheck((const char *)encoded, encoded_size - 1));
+  CHECKED_ALLOC(*json, json_string_nocheck(str));
   return 0;
 }
 
@@ -561,10 +590,10 @@ static int write_escaped_str_to_csv(FILE *dest, const char *str, size_t size) {
   return 0;
 }
 
-static int write_byte_array_to_csv(FILE *dest, const char *str, size_t size) {
+static int write_byte_array_to_csv(FILE *dest, const char *bytes, size_t size) {
   CHECKED_PRINT(dest, "\"[");
   for (int i = 0; i < size; ++i) {
-    CHECKED_PRINTF(dest, "%d", (unsigned char)str[i]);
+    CHECKED_PRINTF(dest, "%d", (unsigned char)bytes[i]);
 
     if(i != size - 1){
       if (fputc(',', dest) < 0) {
