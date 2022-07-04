@@ -29,8 +29,6 @@ typedef struct {
   decimal_t *dec;
   char *str;
   size_t str_size;
-  uint8_t *utf8;
-  size_t utf8_size;
 } cache_t;
 
 static cache_t *cache_new() {
@@ -43,96 +41,10 @@ static cache_t *cache_new() {
 static void cache_free(cache_t *cache) {
   decimal_free(cache->dec);
   free(cache->str);
-  free(cache->utf8);
   free(cache);
 }
 
 int JSON_ENCODE_FLAGS = JSON_ENCODE_ANY | JSON_COMPACT | JSON_ENSURE_ASCII;
-
-/*
- * Converts a binary buffer into a NUL-terminated JSON UTF-8 string.
- * Avro bytes and fixed values are encoded in JSON as a string, and JSON
- * strings must be in UTF-8.  For these Avro types, the JSON string is
- * restricted to the characters U+0000..U+00FF, which corresponds to the
- * ISO-8859-1 character set.  This function performs this conversion.
- */
-static int encode_utf8_bytes(const void *src, size_t src_len, void **dest,
-                             size_t *dest_len, cache_t *cache) {
-
-  // First, determine the size of the resulting UTF-8 buffer.
-  // Bytes in the range 0x00..0x7f will take up one byte; bytes in
-  // the range 0x80..0xff will take up two.
-  const uint8_t *src8 = (const uint8_t *)src;
-
-  size_t utf8_len = src_len + 1; // +1 for NUL terminator
-  size_t i;
-  for (i = 0; i < src_len; i++) {
-    if (src8[i] & 0x80) {
-      utf8_len++;
-    }
-  }
-
-  // Reuse a cached buffer for the UTF-8 string and fill it in (resize the
-  // buffer when needed).
-  uint8_t *dest8 = cache->utf8;
-  if (cache->utf8_size < utf8_len) {
-    cache->utf8 = (uint8_t *)realloc(cache->utf8, sizeof(uint8_t) * utf8_len);
-    cache->utf8_size = utf8_len;
-    dest8 = cache->utf8;
-  }
-  if (dest8 == NULL) {
-    avro_set_error("Cannot allocate JSON bytes buffer");
-    return ENOMEM;
-  }
-
-  uint8_t *curr = dest8;
-  for (i = 0; i < src_len; i++) {
-    if (src8[i] & 0x80) {
-      *curr++ = (0xc0 | (src8[i] >> 6));
-      *curr++ = (0x80 | (src8[i] & 0x3f));
-    } else {
-      *curr++ = src8[i];
-    }
-  }
-
-  *curr = '\0';
-
-  // And we're good.
-  *dest = dest8;
-  *dest_len = utf8_len;
-  return 0;
-}
-
-char *byte_array_to_str(const char *bytes, size_t size, char **buf, size_t *buf_size) {
-
-  // Need up to 3 chars to print a byte value (0..255), (size - 1) commas, 2 characters square brackets and NULL terminator
-  size_t str_max_size = 3 * size + (size - 1) + 2 + 1;
-
-  if (*buf == NULL || *buf_size < str_max_size) {
-    *buf = (char *)realloc(*buf, str_max_size);
-    if (*buf == NULL) {
-      return NULL;
-    }
-  }
-  char *str = *buf;
-
-  int length = 0;
-  length += snprintf(str, str_max_size, "[");
-
-  for (int i = 0; i < size; ++i) {
-    length += snprintf(str + length, str_max_size - length, "%d", (unsigned char)bytes[i]);
-
-    if(i != size - 1){
-        length += snprintf(str + length, str_max_size - length, ",");
-    }
-  }
-  length += snprintf(str + length, str_max_size - length, "]");
-
-  *buf_size = length;
-
-  return str;
-}
-
 
 #ifndef isnan
 #ifndef __sun
@@ -187,6 +99,26 @@ static int is_ms_hadoop_logical_type_guid(const avro_value_t *value, size_t size
   return 0;
 }
 
+int avro_byte_array_to_json_t(json_t **json, const unsigned char *bytes, size_t element_count) {
+  int rval = 0;
+  json_t *result = json_array();
+  if (result == NULL) {
+    avro_set_error("Cannot allocate JSON array");
+    return ENOMEM;
+  }
+
+  for (size_t i = 0; i < element_count; i++) {
+    if ((rval = json_array_append_new(result, json_integer((unsigned char)bytes[i]))) != 0) {
+      avro_set_error("Cannot append element to array");
+      json_decref(result);
+      return rval;
+    }
+  }
+
+  CHECKED_ALLOC(*json, result);
+  return 0;
+}
+
 static int avro_value_to_json_t(const avro_value_t *value, json_t **json,
                                 int top_level, const config_t *conf,
                                 cache_t *cache);
@@ -195,6 +127,7 @@ static int avro_bytes_value_to_json_t(const avro_value_t *value, json_t **json,
                                       const void *bytes, size_t size,
                                       const config_t *conf, cache_t *cache) {
   avro_logical_schema_t *logical_type = NULL;
+
   if (conf->logical_types) {
     logical_type = avro_logical_schema(avro_value_get_schema(value));
   }
@@ -214,12 +147,7 @@ static int avro_bytes_value_to_json_t(const avro_value_t *value, json_t **json,
     return 0;
   }
 
-  char *str = byte_array_to_str(bytes, size, &cache->str, &cache->str_size);
-  if (str == NULL) {
-    return ENOMEM;
-  }
-  CHECKED_ALLOC(*json, json_string_nocheck(str));
-  return 0;
+  return avro_byte_array_to_json_t(json, bytes, size);
 }
 
 static int avro_array_to_json_t(const avro_value_t *value, json_t **json,
@@ -531,10 +459,10 @@ static int avro_file_to_json(avro_file_reader_t reader, avro_schema_t wschema,
   avro_value_t value;
   avro_generic_value_new(iface, &value);
   cache_t *cache = cache_new();
-
   int rval = 0;
   while (avro_file_reader_read_value(reader, &value) == 0) {
     json_t *json = NULL;
+
     if ((rval = avro_value_to_json_t(&value, &json, 1, conf, cache)) != 0) {
       break;
     }
