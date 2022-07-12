@@ -99,6 +99,12 @@ static int is_ms_hadoop_logical_type_guid(const avro_value_t *value, size_t size
   return 0;
 }
 
+static int record_field_to_csv(FILE *dest, const avro_value_t *value,
+                              size_t field_idx, int print_comma, const config_t *conf, cache_t *cache);
+
+static int record_field_to_json(json_t *result, const avro_value_t *value,
+                              size_t field_idx, const config_t *conf, cache_t *cache);
+
 int avro_byte_array_to_json_t(json_t **json, const unsigned char *bytes, size_t element_count) {
   int rval = 0;
   json_t *result = json_array();
@@ -395,50 +401,29 @@ static int avro_value_to_json_t(const avro_value_t *value, json_t **json,
     json_t *result;
     CHECKED_ALLOC(result, json_object());
 
-    size_t field_count;
-    if ((rval = avro_value_get_size(value, &field_count)) != 0) {
-      json_decref(result);
-      return rval;
-    }
-
+    size_t field_count = conf->columns_size;
     int filter_cols = top_level && conf->columns_size > 0;
 
-    for (size_t i = 0; i < field_count; i++) {
-      if (filter_cols && (i >= conf->columns_size || !conf->columns[i])) {
-        continue;
-      }
-
-      const char *field_name;
-      avro_value_t field;
-
-      if ((rval = avro_value_get_by_index(value, i, &field, &field_name)) !=
-          0) {
-        json_decref(result);
-        return rval;
-      }
-
-      json_t *field_json = NULL;
-      if ((rval = avro_value_to_json_t(&field, &field_json, 0, conf, cache)) !=
-          0) {
-        json_decref(result);
-        return rval;
-      }
-
-      if (conf->prune &&
-          (json_is_null(field_json) ||
-           (json_is_object(field_json) && !json_object_size(field_json)) ||
-           (json_is_array(field_json) && !json_array_size(field_json)))) {
-        json_decref(field_json);
-        continue;
-      }
-
-      if ((rval = json_object_set_new_nocheck(result, field_name,
-                                              field_json)) != 0) {
-        json_decref(field_json);
+    if(!filter_cols) {
+      // --columns was not provided, print all the fields then
+      if ((rval = avro_value_get_size(value, &field_count)) != 0) {
         json_decref(result);
         return rval;
       }
     }
+
+    for (size_t i = 0; i < field_count; i++) {
+      size_t field_idx = i;
+      if(filter_cols) {
+        // --columns was provided, print requested field
+        field_idx = conf->columns[i];
+      }
+      if ((rval = record_field_to_json(result, value, field_idx, conf, cache)) != 0) {
+        json_decref(result);
+        return rval;
+      }
+    }
+
     *json = result;
     return 0;
   }
@@ -451,6 +436,38 @@ static int avro_value_to_json_t(const avro_value_t *value, json_t **json,
   }
   }
   return 0;
+}
+
+static int record_field_to_json(json_t *result, const avro_value_t *value,
+                              size_t field_idx, const config_t *conf,
+                              cache_t *cache) {
+  int rval = 0;
+  const char *field_name;
+  avro_value_t field;
+
+  if ((rval = avro_value_get_by_index(value, field_idx, &field, &field_name)) != 0) {
+    return rval;
+  }
+
+  json_t *field_json = NULL;
+  if ((rval = avro_value_to_json_t(&field, &field_json, 0, conf, cache)) != 0) {
+    return rval;
+  }
+
+  if (conf->prune &&
+      (json_is_null(field_json) ||
+        (json_is_object(field_json) && !json_object_size(field_json)) ||
+        (json_is_array(field_json) && !json_array_size(field_json)))) {
+    json_decref(field_json);
+    return rval;
+  }
+
+  if ((rval = json_object_set_new_nocheck(result, field_name, field_json)) != 0) {
+    json_decref(field_json);
+    return rval;
+  }
+
+  return rval;
 }
 
 static int avro_file_to_json(avro_file_reader_t reader, avro_schema_t wschema,
@@ -734,27 +751,26 @@ static int avro_value_to_csv(FILE *dest, const avro_value_t *value,
 
   case AVRO_RECORD: {
     if (top_level) {
-      size_t field_count;
-      CHECKED_EV(avro_value_get_size(value, &field_count));
-
+      size_t field_count = conf->columns_size;
       int filter_cols = conf->columns_size > 0;
-      int printed = 0;
-      for (size_t i = 0; i < field_count; i++) {
-        if (filter_cols && (i >= conf->columns_size || !conf->columns[i])) {
-          continue;
-        }
-        if (printed) {
-          if (fputc(',', dest) < 0) {
-            return ferror(dest);
-          }
-        }
 
-        const char *field_name;
-        avro_value_t field;
-        CHECKED_EV(avro_value_get_by_index(value, i, &field, &field_name));
-        CHECKED_EV(avro_value_to_csv(dest, &field, 0, conf, cache));
-        printed = 1;
+      if(!filter_cols) {
+        // --columns was not provided, print all the fields then
+        CHECKED_EV(avro_value_get_size(value, &field_count));
       }
+
+      int print_comma = 0;
+
+      for(size_t i = 0; i < field_count; i++) {
+        size_t field_idx = i;
+        if(filter_cols) {
+          // --columns was provided, print requested field
+          field_idx = conf->columns[i];
+        }
+        CHECKED_EV(record_field_to_csv(dest, value, field_idx, print_comma, conf, cache));
+        print_comma = 1;
+      }
+
       return 0;
     }
 
@@ -774,6 +790,22 @@ static int avro_value_to_csv(FILE *dest, const avro_value_t *value,
     return avro_value_to_csv(dest, &branch, top_level, conf, cache);
   }
   }
+  return 0;
+}
+
+static int record_field_to_csv(FILE *dest, const avro_value_t *value,
+                              size_t field_idx, int print_comma, const config_t *conf,
+                              cache_t *cache) {
+  const char *field_name;
+  avro_value_t field;
+
+  if (print_comma) {
+    if (fputc(',', dest) < 0) {
+      return ferror(dest);
+    }
+  }
+  CHECKED_EV(avro_value_get_by_index(value, field_idx, &field, &field_name));
+  CHECKED_EV(avro_value_to_csv(dest, &field, 0, conf, cache));
   return 0;
 }
 
@@ -943,12 +975,12 @@ static void print_usage(const char *exe) {
           "Usage: %s [OPTIONS] FILE\n"
           "\n"
           "Where options are:\n"
-          " --show-schema      Only show Avro file schema, and exit\n"
-          " --prune            Omit null values as well as empty lists and "
-          "objects\n"
-          " --logical-types    Convert logical types automatically\n"
-          " --ms-hadoop-logical-types    Convert non-standard logical types of Microsoft.Hadoop.Avro (System.Guid) automatically\n"
-          " --columns 1,2,...  Only output specified columns numbers\n",
+          " --show-schema                 Only show Avro file schema, and exit\n"
+          " --prune                       Omit null values as well as empty lists and objects\n"
+          " --logical-types               Convert logical types automatically\n"
+          " --csv                         Produce output in CSV format\n"
+          " --ms-hadoop-logical-types     Convert non-standard logical types of Microsoft.Hadoop.Avro (System.Guid) automatically\n"
+          " --columns 1,2,...             Only output specified columns numbers\n",
           exe);
   exit(1);
 }
@@ -970,24 +1002,12 @@ static int parse_columns_indices(char *cols_list, int32_t **columns,
       return EINVAL;
       free(cols_indices);
     }
-    *c++ = col_idx;
+    *c++ = col_idx-1;
     col = strtok_r(NULL, ",", &saveptr);
   } while (col != NULL);
 
-  size_t size = 0;
-  for (int i = 0; i < cols_num; ++i) {
-    if (cols_indices[i] > size) {
-      size = cols_indices[i];
-    }
-  }
-  int32_t *cols = (int32_t *)malloc(sizeof(int32_t) * size);
-  memset(cols, 0, sizeof(int32_t) * size);
-  for (int i = 0; i < cols_num; ++i) {
-    cols[cols_indices[i] - 1] = 1;
-  }
-  free(cols_indices);
-  *columns = cols;
-  *columns_size = size;
+  *columns = cols_indices;
+  *columns_size = cols_num;
   return 0;
 }
 
