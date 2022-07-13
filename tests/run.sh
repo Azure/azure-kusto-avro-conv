@@ -35,5 +35,6 @@ run_test decimals-bytes decimals-bytes-l --logical-types
 run_test columns columns-1 --columns 1
 run_test columns columns-2 --columns 2
 run_test columns columns-3 --columns 1,4
+run_test columns columns-4 --columns 4,1
 run_test dates dates-l --logical-types
 run_test datetimes datetimes-l --logical-types
