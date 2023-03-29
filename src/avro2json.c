@@ -113,6 +113,11 @@ int avro_byte_array_to_json_t(json_t **json, const unsigned char *bytes, size_t 
     return ENOMEM;
   }
 
+  static int printedByteArrayTelemetry = 0;
+  if(!printedByteArrayTelemetry++) {
+    fprintf(stderr, "Byte array detected\n", avro_strerror());
+  }
+
   for (size_t i = 0; i < element_count; i++) {
     if ((rval = json_array_append_new(result, json_integer((unsigned char)bytes[i]))) != 0) {
       avro_set_error("Cannot append element to array");
@@ -536,6 +541,10 @@ static int write_escaped_str_to_csv(FILE *dest, const char *str, size_t size) {
 }
 
 static int write_byte_array_to_csv(FILE *dest, const char *bytes, size_t size) {
+  static int printedByteArrayTelemetry = 0;
+  if(!printedByteArrayTelemetry++) {
+    fprintf(stderr, "Byte array detected\n", avro_strerror());
+  }
   CHECKED_PRINT(dest, "\"[");
   for (int i = 0; i < size; ++i) {
     CHECKED_PRINTF(dest, "%d", (unsigned char)bytes[i]);
