@@ -115,7 +115,7 @@ int avro_byte_array_to_json_t(json_t **json, const unsigned char *bytes, size_t 
 
   static int printedByteArrayTelemetry = 0;
   if(!printedByteArrayTelemetry++) {
-    fprintf(stderr, "Byte array detected\n", avro_strerror());
+    fprintf(stderr, "Byte array detected\n");
   }
 
   for (size_t i = 0; i < element_count; i++) {
@@ -543,7 +543,7 @@ static int write_escaped_str_to_csv(FILE *dest, const char *str, size_t size) {
 static int write_byte_array_to_csv(FILE *dest, const char *bytes, size_t size) {
   static int printedByteArrayTelemetry = 0;
   if(!printedByteArrayTelemetry++) {
-    fprintf(stderr, "Byte array detected\n", avro_strerror());
+    fprintf(stderr, "Byte array detected\n");
   }
   CHECKED_PRINT(dest, "\"[");
   for (int i = 0; i < size; ++i) {
