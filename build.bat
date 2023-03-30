@@ -6,12 +6,22 @@ set MSBUILD_DIR=%3
 set CMAKE_DIR=%4
 set MSBUILD_ARGS=%5
 IF exist build ( 
-echo Build directory exists, cleaning
-rmdir /s /q build
+echo Build directory exists
 )
-mkdir build && echo Build directory created && cd build
+ELSE(
+mkdir build && echo Build directory created
+)
+cd build
+IF exist %CONF% (
+    echo Configuration directory exists
+)
+ELSE(
+mkdir %CONF% && echo Configuration directory created
 %CMAKE_DIR%\cmake.exe -DVCPKG_TARGET_TRIPLET=x64-windows-static -DCMAKE_BUILD_TYPE=%CONF% -DCMAKE_TOOLCHAIN_FILE=%VCPKG_DIR%\scripts\buildsystems\vcpkg.cmake -A x64 ..
 echo Solution and project created
-%MSBUILD_DIR%\MSBuild.exe azure-kust-avro-conv.sln /p:Configuration=%CONF% %MSBUILD_ARGS%
+copy *.sln %CONF%\
+copy *.vcxproj %CONF%\
+)
+%MSBUILD_DIR%\MSBuild.exe %CONF%\azure-kust-avro-conv.sln /p:Configuration=%CONF% %MSBUILD_ARGS%
 copy %VCPKG_DIR%\installed\x64-windows-release\bin\jemalloc.dll %CONF%\
 cd ..
