@@ -523,7 +523,7 @@ static int write_escape_quotes(FILE *dest, const char *str, size_t size) {
 
 static int write_escaped_str_to_csv(FILE *dest, const char *str, size_t size) {
   if (size > 0) {
-    if (!memchr(str, '"', size) && !memchr(str, ',', size)) {
+    if (!memchr(str, '"', size) && !memchr(str, ',', size) && !memchr(str, '\n', size)  && !memchr(str, '\r', size)) {
       if (fwrite(str, size, 1, dest) < 1) {
         return ferror(dest);
       }
