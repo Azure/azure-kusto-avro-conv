@@ -1,0 +1,2 @@
+{"field1":"Regular string","field2":"String with comma, separator","field3":"String with newline\ncharacter","field4":"String with \"quotes\""}
+{"field1":"Another regular string","field2":"String, with, multiple, commas","field3":"String\nwith multiple\nnewlines","field4":"String \"string\" with multiple \"quotes\""}
