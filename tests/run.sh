@@ -38,3 +38,4 @@ run_test columns columns-3 --columns 1,4
 run_test columns columns-4 --columns 4,1
 run_test dates dates-l --logical-types
 run_test datetimes datetimes-l --logical-types
+run_test escaping escaping
