@@ -1,3 +1,5 @@
+#include <stdio.h>
+#include <io.h>
 #include <avro.h>
 #include <avro/schema.h>
 #include <errno.h>
@@ -1083,7 +1085,17 @@ custom_jemalloc_allocator(void *ud, void *ptr, size_t osize, size_t nsize)
 }
 #endif
 
+// Define _O_BINARY if it's not already defined
+#ifndef _O_BINARY
+#define _O_BINARY 0x8000
+#endif
+
 int main(int argc, char **argv) {
+
+#if defined(_WIN32)
+  // Set stdout to binary mode to preserve line endings
+  _setmode(_fileno(stdout), _O_BINARY);
+#endif
 
 #if defined(_WIN32)
 /* Currently provided only for Windows, since it was tested only on Windows. */
