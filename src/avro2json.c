@@ -1,11 +1,11 @@
-#include <stdio.h>
-#include <io.h>
 #include <avro.h>
 #include <avro/schema.h>
 #include <errno.h>
 #include <jansson.h>
 #include <stdlib.h>
 #if defined(_WIN32)
+#include <stdio.h>
+#include <io.h>
 #include <jemalloc.h>
 #endif
 #include <string.h>
