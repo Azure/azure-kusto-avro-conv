@@ -2,14 +2,14 @@
 <package xmlns="http://schemas.microsoft.com/packaging/2013/05/nuspec.xsd">
   <metadata>
     <id>avro2json</id>
-    <version>0.1.15</version>
-    <authors>Michael Spector</authors>
-    <owners>Michael Spector</owners>
+    <version>0.1.16</version>
+    <authors>Michael Spector, Igor Borodin</authors>
+    <owners>Michael Spector, Igor Borodin</owners>
     <license type="expression">MIT</license>
     <projectUrl>https://github.com/Azure/azure-kusto-avro-conv</projectUrl>
     <requireLicenseAcceptance>false</requireLicenseAcceptance>
     <description>Avro to JSON converter tool.</description>
-    <releaseNotes>Using jemalloc for Windows</releaseNotes>
+    <releaseNotes>Set stdout to binary mode to preserve line endings</releaseNotes>
     <copyright>Copyright 2020</copyright>
     <tags>utility avro json parsing</tags>
     <dependencies>
