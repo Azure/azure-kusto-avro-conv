@@ -1046,9 +1046,12 @@ char *alloc_and_copy_string(const char *source) {
   size_t length = strlen(source);
   char *duplicate = (char *)malloc(length + 1);
   if (duplicate != NULL) {
-    if(strcpy_s(duplicate, length + 1, source) != 0) {
-      free(duplicate);
-      duplicate = NULL;
+    if (strncpy(duplicate, source, length) == NULL) {
+        free(duplicate);
+        duplicate = NULL;
+    } else {
+        // Ensure null-termination of the copied string
+        duplicate[length] = '\0';
     }
   }
 
