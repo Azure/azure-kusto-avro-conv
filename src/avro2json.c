@@ -23,7 +23,7 @@ typedef struct {
   int ms_hadoop_logical_types;
   int show_schema;
   int output_csv;
-  int32_t *columns;
+  char **columns;
   size_t columns_size;
 } config_t;
 
@@ -101,11 +101,17 @@ static int is_ms_hadoop_logical_type_guid(const avro_value_t *value, size_t size
   return 0;
 }
 
-static int record_field_to_csv(FILE *dest, const avro_value_t *value,
-                              size_t field_idx, int print_comma, const config_t *conf, cache_t *cache);
+static int record_field_to_csv_by_index(FILE *dest, const avro_value_t *value,
+                                        size_t field_idx, const config_t *conf, cache_t *cache);
 
-static int record_field_to_json(json_t *result, const avro_value_t *value,
-                              size_t field_idx, const config_t *conf, cache_t *cache);
+static int record_field_to_csv_by_name(FILE *dest, const avro_value_t *value, 
+                                       const char *field_name, const config_t *conf, cache_t *cache);
+
+static int record_field_to_json_by_index(json_t *result, const avro_value_t *value,
+                                         size_t field_idx, const config_t *conf, cache_t *cache);
+
+static int record_field_to_json_by_name(json_t *result, const avro_value_t *value,
+                                        const char *field_name, const config_t *conf, cache_t *cache);
 
 int avro_byte_array_to_json_t(json_t **json, const unsigned char *bytes, size_t element_count) {
   int rval = 0;
@@ -409,7 +415,7 @@ static int avro_value_to_json_t(const avro_value_t *value, json_t **json,
     CHECKED_ALLOC(result, json_object());
 
     size_t field_count = conf->columns_size;
-    int filter_cols = top_level && conf->columns_size > 0;
+    int filter_cols = top_level && field_count > 0;
 
     if(!filter_cols) {
       // --columns was not provided, print all the fields then
@@ -419,15 +425,19 @@ static int avro_value_to_json_t(const avro_value_t *value, json_t **json,
       }
     }
 
-    for (size_t i = 0; i < field_count; i++) {
-      size_t field_idx = i;
+    for (size_t field_idx = 0; field_idx < field_count; field_idx++) {
       if(filter_cols) {
-        // --columns was provided, print requested field
-        field_idx = conf->columns[i];
+        const char *column_name = conf->columns[field_idx];
+        if(record_field_to_json_by_name(result, value, column_name, conf, cache)!= 0) {
+          fprintf(stderr, "Error outputting column '%s'\n", column_name);
+          continue;
+        }
       }
-      if ((rval = record_field_to_json(result, value, field_idx, conf, cache)) != 0) {
-        json_decref(result);
-        return rval;
+      else {
+        if(record_field_to_json_by_index(result, value, field_idx, conf, cache) != 0) {
+          json_decref(result);
+          return rval;
+        }
       }
     }
 
@@ -445,19 +455,13 @@ static int avro_value_to_json_t(const avro_value_t *value, json_t **json,
   return 0;
 }
 
-static int record_field_to_json(json_t *result, const avro_value_t *value,
-                              size_t field_idx, const config_t *conf,
+static int record_field_to_json(json_t *result, const avro_value_t *field_value,
+                              const char *field_name, const config_t *conf,
                               cache_t *cache) {
   int rval = 0;
-  const char *field_name;
-  avro_value_t field;
-
-  if ((rval = avro_value_get_by_index(value, field_idx, &field, &field_name)) != 0) {
-    return rval;
-  }
 
   json_t *field_json = NULL;
-  if ((rval = avro_value_to_json_t(&field, &field_json, 0, conf, cache)) != 0) {
+  if ((rval = avro_value_to_json_t(field_value, &field_json, 0, conf, cache)) != 0) {
     return rval;
   }
 
@@ -473,6 +477,38 @@ static int record_field_to_json(json_t *result, const avro_value_t *value,
     json_decref(field_json);
     return rval;
   }
+
+  return rval;
+}
+
+static int record_field_to_json_by_index(json_t *result, const avro_value_t *value,
+                                size_t field_idx, const config_t *conf,
+                                cache_t *cache) {
+  int rval = 0;
+  const char *field_name;
+  avro_value_t field;
+
+  if ((rval = avro_value_get_by_index(value, field_idx, &field, &field_name)) != 0) {
+    return rval;
+  }
+
+  rval = record_field_to_json(result, &field, field_name, conf, cache);
+
+  return rval;
+}
+
+static int record_field_to_json_by_name(json_t *result, const avro_value_t *value,
+                                        const char *field_name, const config_t *conf,
+                                        cache_t *cache) {
+  int rval = 0;
+  avro_value_t field;
+  size_t field_idx;
+
+  if ((rval = avro_value_get_by_name(value, field_name, &field, &field_idx)) != 0) {
+    return rval;
+  }
+
+  rval = record_field_to_json(result, &field, field_name, conf, cache);
 
   return rval;
 }
@@ -763,23 +799,32 @@ static int avro_value_to_csv(FILE *dest, const avro_value_t *value,
   case AVRO_RECORD: {
     if (top_level) {
       size_t field_count = conf->columns_size;
-      int filter_cols = conf->columns_size > 0;
+      int filter_cols = field_count > 0;
 
       if(!filter_cols) {
         // --columns was not provided, print all the fields then
         CHECKED_EV(avro_value_get_size(value, &field_count));
       }
 
-      int print_comma = 0;
-
-      for(size_t i = 0; i < field_count; i++) {
-        size_t field_idx = i;
+      for(size_t field_idx = 0; field_idx < field_count; field_idx++) {
+        if (field_idx > 0) {
+          // prepend a comma for every field after the first
+          if (fputc(',', dest) < 0) {
+            return ferror(dest);
+          }
+        }
         if(filter_cols) {
           // --columns was provided, print requested field
-          field_idx = conf->columns[i];
+          const char *column_name = conf->columns[field_idx];
+
+          // Can't use CHECKED_EV here, because a column with the provided name might not exist.
+          if (record_field_to_csv_by_name(dest, value, column_name, conf, cache) != 0) {
+            fprintf(stderr, "Error outputting '%s' field\n", column_name);
+          }
         }
-        CHECKED_EV(record_field_to_csv(dest, value, field_idx, print_comma, conf, cache));
-        print_comma = 1;
+        else {
+          CHECKED_EV(record_field_to_csv_by_index(dest, value, field_idx, conf, cache));
+        }
       }
 
       return 0;
@@ -804,20 +849,21 @@ static int avro_value_to_csv(FILE *dest, const avro_value_t *value,
   return 0;
 }
 
-static int record_field_to_csv(FILE *dest, const avro_value_t *value,
-                              size_t field_idx, int print_comma, const config_t *conf,
-                              cache_t *cache) {
-  const char *field_name;
-  avro_value_t field;
+static int record_field_to_csv_by_index(FILE *dest, const avro_value_t *value, size_t field_idx, const config_t *conf, cache_t *cache) {
+    const char *field_name;
+    avro_value_t field;
 
-  if (print_comma) {
-    if (fputc(',', dest) < 0) {
-      return ferror(dest);
-    }
-  }
-  CHECKED_EV(avro_value_get_by_index(value, field_idx, &field, &field_name));
-  CHECKED_EV(avro_value_to_csv(dest, &field, 0, conf, cache));
-  return 0;
+    CHECKED_EV(avro_value_get_by_index(value, field_idx, &field, &field_name));
+    CHECKED_EV(avro_value_to_csv(dest, &field, 0, conf, cache));
+    return 0;
+}
+
+static int record_field_to_csv_by_name(FILE *dest, const avro_value_t *value, const char *field_name, const config_t *conf, cache_t *cache) {
+    avro_value_t field;
+
+    CHECKED_EV(avro_value_get_by_name(value, field_name, &field, NULL));
+    CHECKED_EV(avro_value_to_csv(dest, &field, 0, conf, cache));
+    return 0;
 }
 
 static int avro_file_to_csv(avro_file_reader_t reader, avro_schema_t wschema,
@@ -996,30 +1042,20 @@ static void print_usage(const char *exe) {
   exit(1);
 }
 
-static int parse_columns_indices(char *cols_list, int32_t **columns,
-                                 size_t *columns_size) {
-  const char *p = cols_list;
-  size_t cols_num = 1;
-  while (*p) {
-    cols_num += *p++ == ',' ? 1 : 0;
-  }
-  int32_t *cols_indices = (int32_t *)malloc(sizeof(int32_t) * cols_num);
-  char *saveptr;
-  char *col = strtok_r(cols_list, ",", &saveptr);
-  int32_t *c = cols_indices;
-  do {
-    int col_idx = atoi(col);
-    if (col_idx <= 0) {
-      return EINVAL;
-      free(cols_indices);
+char *alloc_and_copy_string(const char *source) {
+  size_t length = strlen(source);
+  char *duplicate = (char *)malloc(length + 1);
+  if (duplicate != NULL) {
+    if (strncpy(duplicate, source, length) == NULL) {
+        free(duplicate);
+        duplicate = NULL;
+    } else {
+        // Ensure null-termination of the copied string
+        duplicate[length] = '\0';
     }
-    *c++ = col_idx-1;
-    col = strtok_r(NULL, ",", &saveptr);
-  } while (col != NULL);
+  }
 
-  *columns = cols_indices;
-  *columns_size = cols_num;
-  return 0;
+  return duplicate;
 }
 
 static const char *parse_args(int argc, char **argv, config_t *conf) {
@@ -1036,21 +1072,48 @@ static const char *parse_args(int argc, char **argv, config_t *conf) {
     } else if (!strcmp(argv[arg_idx], "--csv")) {
       conf->output_csv = 1;
     } else if (!strcmp(argv[arg_idx], "--columns") && arg_idx < argc - 1) {
-      if (parse_columns_indices(argv[++arg_idx], &conf->columns,
-                                &conf->columns_size)) {
-        print_usage(argv[0]);
+      // Treat the next argument as a JSON array string
+      const char *columns_json_string = argv[++arg_idx];
+      
+      // Parse the JSON array string to extract column names
+      json_t *columns_json_array = json_loads(columns_json_string, 0, NULL);
+      
+      if (!columns_json_array) {
+        fprintf(stderr, "Error: Failed to parse JSON array for columns. %s\n", columns_json_string);
+        exit(1);
       }
+      
+      // Extract and store column names from the JSON array
+      size_t columns_json_array_size = json_array_size(columns_json_array);
+      conf->columns_size = columns_json_array_size;
+      conf->columns = (char **)malloc(sizeof(char *) * columns_json_array_size);
+      
+      for (size_t i = 0; i < columns_json_array_size; i++) {
+        json_t *item = json_array_get(columns_json_array, i);
+        if (json_is_string(item)) {
+          conf->columns[i] = alloc_and_copy_string(json_string_value(item));
+        } else {
+          fprintf(stderr, "Error: Invalid item in JSON array for columns.\n");
+          exit(1);
+        }
+      }
+      
+      json_decref(columns_json_array);
     } else {
       print_usage(argv[0]);
     }
   }
-
+  
   if (arg_idx != argc - 1) {
     print_usage(argv[0]);
   }
-
+  
   return argv[arg_idx];
 }
+
+
+
+
 
 #if defined(_WIN32)
 /*
@@ -1112,6 +1175,9 @@ int main(int argc, char **argv) {
   const char *file = parse_args(argc, argv, &conf);
   int rval = process_file(file, &conf);
   if (conf.columns) {
+    for(size_t i = 0; i < conf.columns_size; i++) {
+      free(conf.columns[i]);
+    }
     free(conf.columns);
   }
   return rval;
