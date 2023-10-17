@@ -429,7 +429,7 @@ static int avro_value_to_json_t(const avro_value_t *value, json_t **json,
       if(filter_cols) {
         const char *column_name = conf->columns[field_idx];
         if(record_field_to_json_by_name(result, value, column_name, conf, cache)!= 0) {
-          fprintf(stderr, "Error outputting column '%s'\n", column_name);
+          fprintf(stderr, "Unable to output '%s' field\n", column_name);
           continue;
         }
       }
@@ -819,7 +819,11 @@ static int avro_value_to_csv(FILE *dest, const avro_value_t *value,
 
           // Can't use CHECKED_EV here, because a column with the provided name might not exist.
           if (record_field_to_csv_by_name(dest, value, column_name, conf, cache) != 0) {
-            fprintf(stderr, "Error outputting '%s' field\n", column_name);
+            fprintf(stderr, "Unable to output '%s' field\n", column_name);
+            if(field_count == 1)
+            {
+              CHECKED_PRINT(dest, ",");
+            }
           }
         }
         else {

@@ -36,6 +36,7 @@ run_test columns columns-1 --columns "[\"a\"]"
 run_test columns columns-2 --columns "[\"b\"]"
 run_test columns columns-3 --columns "[\"a\",\"d\"]"
 run_test columns columns-3-non-existing-columns --columns "[\"non-existing-column1\",\"a\",\"non-existing-column2\",\"d\",\"another-non-existing-column\"]"
+run_test columns columns-3-non-existing-column --columns "[\"non-existing-column1\"]"
 run_test columns columns-4 --columns "[\"d\",\"a\"]"
 run_test dates dates-l --logical-types
 run_test datetimes datetimes-l --logical-types
