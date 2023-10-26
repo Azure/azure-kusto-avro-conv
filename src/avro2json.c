@@ -20,13 +20,21 @@
 #define MILLIS_IN_SEC 1000UL
 #define NANOS_IN_SEC 1000000000UL
 
-#define TS_SECS_TRANSFORM "ts-s"
-#define TS_MILLIS_TRANSFORM "ts-ms"
-#define TS_NANOS_TRANSFORM "ts-ns"
+#define TRANSFORM_TS_SECS_STR "ts-s"
+#define TRANSFORM_TS_MILLIS_STR "ts-ms"
+#define TRANSFORM_TS_NANOS_STR "ts-ns"
 
+enum TransformationType {
+    TRANSFORM_NONE,  // No transformation required
+    TRANSFORM_TS_SECS,
+    TRANSFORM_TS_MILLIS,
+    TRANSFORM_TS_NANOS
+};
+
+// Define a struct for column information
 typedef struct {
     char *column_name;
-    char *transformation;     // Transformation for the column (e.g. TS_SECS_TRANSFORM, TS_MILLIS_TRANSFORM, TS_NANOS_TRANSFORM)
+    enum TransformationType transformation; // Transformation for the column
 } column_info_t;
 
 typedef struct {
@@ -647,7 +655,7 @@ static int avro_bytes_value_to_csv(FILE *dest, const avro_value_t *value,
 
 static int avro_value_to_csv(FILE *dest, const avro_value_t *value,
                              int top_level, const config_t *conf,
-                             cache_t *cache, const char *transformation) {
+                             cache_t *cache, enum TransformationType transformation) {
   switch (avro_value_get_type(value)) {
   case AVRO_BOOLEAN: {
     int val;
@@ -722,18 +730,18 @@ static int avro_value_to_csv(FILE *dest, const avro_value_t *value,
     int64_t val;
     CHECKED_EV(avro_value_get_long(value, &val));
 
-    if (transformation != NULL) {
-      if(strcmp(transformation, TS_SECS_TRANSFORM) == 0) {
+    if (transformation != TRANSFORM_NONE) {
+      if(transformation == TRANSFORM_TS_SECS) {
         CHECKED_PRINT(dest, epoch_nanos_to_utc_str(val * NANOS_IN_SEC));
         return 0;
-      } else if(strcmp(transformation, TS_MILLIS_TRANSFORM) == 0) {
+      } else if(transformation == TRANSFORM_TS_MILLIS) {
         CHECKED_PRINT(dest, epoch_nanos_to_utc_str(val * (NANOS_IN_SEC/MILLIS_IN_SEC)));
         return 0;
-      } else if(strcmp(transformation, TS_NANOS_TRANSFORM) == 0) {
+      } else if(transformation == TRANSFORM_TS_NANOS) {
         CHECKED_PRINT(dest, epoch_nanos_to_utc_str(val));
         return 0;
       }
-      // else unsupported transformation, ignore
+      // else ignore
     }
 
     avro_logical_schema_t *logical_type = NULL;
@@ -878,7 +886,7 @@ static int avro_value_to_csv(FILE *dest, const avro_value_t *value,
 static int record_field_to_csv(FILE *dest, const avro_value_t *value, int filter_cols, size_t field_idx, const config_t *conf, cache_t *cache) {
     avro_value_t field;
     const char *field_name = NULL;
-    const char *transformation = NULL;
+    enum TransformationType transformation = TRANSFORM_NONE;
 
     if(filter_cols) {
       field_name = conf->columns[field_idx].column_name;
@@ -899,7 +907,7 @@ static int avro_file_to_csv(avro_file_reader_t reader, avro_schema_t wschema,
   cache_t *cache = cache_new();
   int rval = 0;
   while (avro_file_reader_read_value(reader, &value) == 0) {
-    if ((rval = avro_value_to_csv(stdout, &value, 1, conf, cache, NULL)) != 0) {
+    if ((rval = avro_value_to_csv(stdout, &value, 1, conf, cache, TRANSFORM_NONE)) != 0) {
       break;
     }
     if (fputc('\n', stdout) < 0) {
@@ -1088,6 +1096,18 @@ char *alloc_and_copy_string(const char *source) {
   return duplicate;
 }
 
+enum TransformationType transformStringToEnum(const char* transformation) {
+    if (!strcmp(transformation, TRANSFORM_TS_SECS_STR)) {
+        return TRANSFORM_TS_SECS;
+    } else if (!strcmp(transformation, TRANSFORM_TS_MILLIS_STR)) {
+        return TRANSFORM_TS_MILLIS;
+    } else if (!strcmp(transformation, TRANSFORM_TS_NANOS_STR)) {
+        return TRANSFORM_TS_NANOS;
+    } else {
+        return TRANSFORM_NONE; // Invalid or unsupported transformation
+    }
+}
+
 static const char *parse_args(int argc, char **argv, config_t *conf) {
   int arg_idx;
   for (arg_idx = 1; arg_idx < argc - 1; ++arg_idx) {
@@ -1125,9 +1145,20 @@ static const char *parse_args(int argc, char **argv, config_t *conf) {
           json_t *column_name_item = json_array_get(item, 0);
           json_t *transformation_item = json_array_get(item, 1);
 
-          if (json_is_string(column_name_item) && json_is_string(transformation_item)) {
+          if (json_is_string(column_name_item)) {
             conf->columns[i].column_name = alloc_and_copy_string(json_string_value(column_name_item));
-            conf->columns[i].transformation = alloc_and_copy_string(json_string_value(transformation_item));
+
+            if (json_is_string(transformation_item)) {
+              const char* transformation = json_string_value(transformation_item);
+              conf->columns[i].transformation = transformStringToEnum(transformation);
+
+              if (conf->columns[i].transformation == TRANSFORM_NONE) {
+                  fprintf(stderr, "Error: Invalid or unsupported transformation in JSON array for columns.\n");
+                  exit(1);
+              }
+            } else {
+              conf->columns[i].transformation = TRANSFORM_NONE; // No transformation specified
+            }
           } else {
             fprintf(stderr, "Error: Invalid item in JSON array for columns.\n");
             exit(1);
@@ -1135,7 +1166,7 @@ static const char *parse_args(int argc, char **argv, config_t *conf) {
         } else if (json_is_string(item)) {
           // When only a column name is provided without transformation
           conf->columns[i].column_name = alloc_and_copy_string(json_string_value(item));
-          conf->columns[i].transformation = NULL;
+          conf->columns[i].transformation = TRANSFORM_NONE;
         } else {
           fprintf(stderr, "Error: Invalid item in JSON array for columns.\n");
           exit(1);
@@ -1217,7 +1248,6 @@ int main(int argc, char **argv) {
   if (conf.columns) {
     for(size_t i = 0; i < conf.columns_size; i++) {
       free(conf.columns[i].column_name);
-      free(conf.columns[i].transformation);
     }
     free(conf.columns);
   }
