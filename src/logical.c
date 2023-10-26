@@ -130,6 +130,8 @@ char *decimal_to_str(decimal_t *value, char **buf, size_t *buf_size) {
 #define MAX_DATETIME_MILLIS "3000-12-31 00:00:00.000"
 #define MIN_DATETIME_MICROS "1970-01-01 00:00:00.000000"
 #define MAX_DATETIME_MICROS "3000-12-31 00:00:00.000000"
+#define MIN_DATETIME_UTC "1970-01-01T00:00:00.0000000Z"
+#define MAX_DATETIME_UTC "3000-12-31T00:00:00.0000000Z"
 #define TIME_MILLIS_EMPTY "00:00:00.000"
 #define TIME_MICROS_EMPTY "00:00:00.000000"
 #define MILLIS_IN_SEC 1000UL
@@ -138,6 +140,7 @@ char *decimal_to_str(decimal_t *value, char **buf, size_t *buf_size) {
 #define MICROS_IN_SEC 1000000UL
 #define MICROS_IN_MIN MICROS_IN_SEC * 60
 #define MICROS_IN_HOUR MICROS_IN_MIN * 60
+#define NANOS_IN_SEC 1000000000UL
 
 char *epoch_days_to_str(int32_t days) {
   static char buf[sizeof(MIN_DATE) + 1];
@@ -146,9 +149,8 @@ char *epoch_days_to_str(int32_t days) {
   dt.tm_year = 70;
   dt.tm_mon = 0;
   dt.tm_mday = 1;
-  mktime(&dt);
-
   dt.tm_mday += days;
+
   if (mktime(&dt) == -1) {
     if (days < 0) {
       return MIN_DATE;
@@ -213,9 +215,8 @@ char *timestamp_millis_to_str(int64_t millis) {
   dt.tm_year = 70;
   dt.tm_mon = 0;
   dt.tm_mday = 1;
-  mktime(&dt);
-
   dt.tm_sec = (int32_t)(millis / MILLIS_IN_SEC);
+
   if (mktime(&dt) == -1) {
     if (millis < 0) {
       return MIN_DATETIME_MILLIS;
@@ -238,8 +239,8 @@ char *timestamp_micros_to_str(int64_t micros) {
   dt.tm_year = 70;
   dt.tm_mon = 0;
   dt.tm_mday = 1;
-
   dt.tm_sec = (int32_t)(micros / MICROS_IN_SEC);
+
   if (mktime(&dt) == -1) {
     if (micros < 0) {
       return MIN_DATETIME_MICROS;
@@ -253,4 +254,29 @@ char *timestamp_micros_to_str(int64_t micros) {
   char *p = buf + sizeof(MIN_DATETIME_MICROS) - 8;
   snprintf(p, 8, ".%06d", rem);
   return buf;
+}
+
+char *epoch_nanos_to_utc_str(int64_t nanos_since_epoch) {
+    static char buf[45];
+
+    struct tm dt = {0};
+    dt.tm_year = 70;
+    dt.tm_mon = 0;
+    dt.tm_mday = 1;
+    dt.tm_sec = (int32_t)(nanos_since_epoch / NANOS_IN_SEC);
+    dt.tm_isdst = 1; // Daylight Saving Time
+
+    if (mktime(&dt) == -1) {
+        if (nanos_since_epoch < 0) {
+          return MIN_DATETIME_UTC;
+        }
+      return MAX_DATETIME_UTC;
+    }
+
+    int32_t nanos = (nanos_since_epoch % NANOS_IN_SEC) / 100; // bring the nanos to 7 digits length
+
+    snprintf(buf, sizeof(buf), "%04d-%02d-%02dT%02d:%02d:%02d.%07dZ",
+             1900 + dt.tm_year, dt.tm_mon + 1, dt.tm_mday, dt.tm_hour, dt.tm_min, dt.tm_sec, nanos);
+
+    return buf;
 }

@@ -54,3 +54,9 @@ char *timestamp_millis_to_str(int64_t millis);
  * "yyyy-mm-dd HH:MM:SS.SSSSSS"
  */
 char *timestamp_micros_to_str(int64_t micros);
+
+/**
+ * Converts nanoseconds since Unix epoch time (1970-01-01) to string representation in ISO 8601
+ * format 'yyyy-mm-ddThh::mm:ss.0000000Z'.
+ */
+char *epoch_nanos_to_utc_str(int64_t nanos_since_epoch);
