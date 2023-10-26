@@ -264,7 +264,7 @@ char *epoch_nanos_to_utc_str(int64_t nanos_since_epoch) {
     dt.tm_mon = 0;
     dt.tm_mday = 1;
     dt.tm_sec = (int32_t)(nanos_since_epoch / NANOS_IN_SEC);
-    dt.tm_isdst = 1; // Daylight Saving Time
+    //dt.tm_isdst = 1; // Daylight Saving Time
 
     if (mktime(&dt) == -1) {
         if (nanos_since_epoch < 0) {
