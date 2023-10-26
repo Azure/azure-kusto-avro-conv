@@ -725,10 +725,13 @@ static int avro_value_to_csv(FILE *dest, const avro_value_t *value,
     if (transformation != NULL) {
       if(strcmp(transformation, TS_SECS_TRANSFORM) == 0) {
         CHECKED_PRINT(dest, epoch_nanos_to_utc_str(val * NANOS_IN_SEC));
+        return 0;
       } else if(strcmp(transformation, TS_MILLIS_TRANSFORM) == 0) {
         CHECKED_PRINT(dest, epoch_nanos_to_utc_str(val * (NANOS_IN_SEC/MILLIS_IN_SEC)));
+        return 0;
       } else if(strcmp(transformation, TS_NANOS_TRANSFORM) == 0) {
         CHECKED_PRINT(dest, epoch_nanos_to_utc_str(val));
+        return 0;
       }
       // else unsupported transformation, ignore
     }
