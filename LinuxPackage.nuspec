@@ -2,14 +2,14 @@
 <package xmlns="http://schemas.microsoft.com/packaging/2013/05/nuspec.xsd">
   <metadata>
     <id>avro2json_linux</id>
-    <version>1.0.1</version>
+    <version>2.0.1</version>
     <authors>Michael Spector, Igor Borodin</authors>
     <owners>Michael Spector, Igor Borodin</owners>
     <license type="expression">MIT</license>
     <projectUrl>https://github.com/Azure/azure-kusto-avro-conv</projectUrl>
     <requireLicenseAcceptance>false</requireLicenseAcceptance>
     <description>Avro to JSON converter tool.</description>
-    <releaseNotes>Provide --columns as a JSON array of column names</releaseNotes>
+    <releaseNotes>Support timestamp transformations and accept them as part of --columns JSON array argument</releaseNotes>
     <copyright>Copyright 2020</copyright>
     <tags>utility avro json parsing</tags>
     <dependencies>

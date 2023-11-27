@@ -41,3 +41,4 @@ run_test columns columns-4 --columns "[\"d\",\"a\"]"
 run_test dates dates-l --logical-types
 run_test datetimes datetimes-l --logical-types
 run_test escaping escaping
+run_test datetimes-from-unix datetimes-from-unix --columns "[[\"UnixSeconds\",\"ts-s\"],[\"UnixMilliseconds\",\"ts-ms\"],[\"UnixNanoseconds\",\"ts-ns\"]]"

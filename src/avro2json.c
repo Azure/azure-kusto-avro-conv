@@ -17,13 +17,33 @@
 #define strtok_r strtok_s
 #endif
 
+#define MILLIS_IN_SEC 1000UL
+#define NANOS_IN_SEC 1000000000UL
+
+#define TRANSFORM_TS_SECS_STR "ts-s"
+#define TRANSFORM_TS_MILLIS_STR "ts-ms"
+#define TRANSFORM_TS_NANOS_STR "ts-ns"
+
+enum TransformationType {
+    TRANSFORM_NONE,  // No transformation required
+    TRANSFORM_TS_SECS,
+    TRANSFORM_TS_MILLIS,
+    TRANSFORM_TS_NANOS
+};
+
+// Define a struct for column information
+typedef struct {
+    char *column_name;
+    enum TransformationType transformation; // Transformation for the column
+} column_info_t;
+
 typedef struct {
   int prune;
   int logical_types;
   int ms_hadoop_logical_types;
   int show_schema;
   int output_csv;
-  char **columns;
+  column_info_t *columns;
   size_t columns_size;
 } config_t;
 
@@ -101,11 +121,7 @@ static int is_ms_hadoop_logical_type_guid(const avro_value_t *value, size_t size
   return 0;
 }
 
-static int record_field_to_csv_by_index(FILE *dest, const avro_value_t *value,
-                                        size_t field_idx, const config_t *conf, cache_t *cache);
-
-static int record_field_to_csv_by_name(FILE *dest, const avro_value_t *value, 
-                                       const char *field_name, const config_t *conf, cache_t *cache);
+static int record_field_to_csv(FILE *dest, const avro_value_t *value, int filter_cols, size_t field_idx, const config_t *conf, cache_t *cache);
 
 static int record_field_to_json_by_index(json_t *result, const avro_value_t *value,
                                          size_t field_idx, const config_t *conf, cache_t *cache);
@@ -427,9 +443,9 @@ static int avro_value_to_json_t(const avro_value_t *value, json_t **json,
 
     for (size_t field_idx = 0; field_idx < field_count; field_idx++) {
       if(filter_cols) {
-        const char *column_name = conf->columns[field_idx];
+        const char *column_name = conf->columns[field_idx].column_name;
         if(record_field_to_json_by_name(result, value, column_name, conf, cache)!= 0) {
-          fprintf(stderr, "Unable to output '%s' field\n", column_name);
+          // Unable to output field
           continue;
         }
       }
@@ -639,7 +655,7 @@ static int avro_bytes_value_to_csv(FILE *dest, const avro_value_t *value,
 
 static int avro_value_to_csv(FILE *dest, const avro_value_t *value,
                              int top_level, const config_t *conf,
-                             cache_t *cache) {
+                             cache_t *cache, enum TransformationType transformation) {
   switch (avro_value_get_type(value)) {
   case AVRO_BOOLEAN: {
     int val;
@@ -713,6 +729,20 @@ static int avro_value_to_csv(FILE *dest, const avro_value_t *value,
   case AVRO_INT64: {
     int64_t val;
     CHECKED_EV(avro_value_get_long(value, &val));
+
+    if (transformation != TRANSFORM_NONE) {
+      if(transformation == TRANSFORM_TS_SECS) {
+        CHECKED_PRINT(dest, epoch_nanos_to_utc_str(val * NANOS_IN_SEC));
+        return 0;
+      } else if(transformation == TRANSFORM_TS_MILLIS) {
+        CHECKED_PRINT(dest, epoch_nanos_to_utc_str(val * (NANOS_IN_SEC/MILLIS_IN_SEC)));
+        return 0;
+      } else if(transformation == TRANSFORM_TS_NANOS) {
+        CHECKED_PRINT(dest, epoch_nanos_to_utc_str(val));
+        return 0;
+      }
+      // else ignore
+    }
 
     avro_logical_schema_t *logical_type = NULL;
     if (conf->logical_types) {
@@ -815,11 +845,11 @@ static int avro_value_to_csv(FILE *dest, const avro_value_t *value,
         }
         if(filter_cols) {
           // --columns was provided, print requested field
-          const char *column_name = conf->columns[field_idx];
+          const char *column_name = conf->columns[field_idx].column_name;
 
           // Can't use CHECKED_EV here, because a column with the provided name might not exist.
-          if (record_field_to_csv_by_name(dest, value, column_name, conf, cache) != 0) {
-            fprintf(stderr, "Unable to output '%s' field\n", column_name);
+          if (record_field_to_csv(dest, value, filter_cols, field_idx, conf, cache) != 0) {
+            // Unable to output field
             if(field_count == 1)
             {
               CHECKED_PRINT(dest, ",");
@@ -827,7 +857,7 @@ static int avro_value_to_csv(FILE *dest, const avro_value_t *value,
           }
         }
         else {
-          CHECKED_EV(record_field_to_csv_by_index(dest, value, field_idx, conf, cache));
+          CHECKED_EV(record_field_to_csv(dest, value, filter_cols, field_idx, conf, cache));
         }
       }
 
@@ -847,26 +877,25 @@ static int avro_value_to_csv(FILE *dest, const avro_value_t *value,
   case AVRO_UNION: {
     avro_value_t branch;
     CHECKED_EV(avro_value_get_current_branch(value, &branch));
-    return avro_value_to_csv(dest, &branch, top_level, conf, cache);
+    return avro_value_to_csv(dest, &branch, top_level, conf, cache, transformation);
   }
   }
   return 0;
 }
 
-static int record_field_to_csv_by_index(FILE *dest, const avro_value_t *value, size_t field_idx, const config_t *conf, cache_t *cache) {
-    const char *field_name;
+static int record_field_to_csv(FILE *dest, const avro_value_t *value, int filter_cols, size_t field_idx, const config_t *conf, cache_t *cache) {
     avro_value_t field;
+    const char *field_name = NULL;
+    enum TransformationType transformation = TRANSFORM_NONE;
 
-    CHECKED_EV(avro_value_get_by_index(value, field_idx, &field, &field_name));
-    CHECKED_EV(avro_value_to_csv(dest, &field, 0, conf, cache));
-    return 0;
-}
-
-static int record_field_to_csv_by_name(FILE *dest, const avro_value_t *value, const char *field_name, const config_t *conf, cache_t *cache) {
-    avro_value_t field;
-
-    CHECKED_EV(avro_value_get_by_name(value, field_name, &field, NULL));
-    CHECKED_EV(avro_value_to_csv(dest, &field, 0, conf, cache));
+    if(filter_cols) {
+      field_name = conf->columns[field_idx].column_name;
+      transformation = conf->columns[field_idx].transformation;
+      CHECKED_EV(avro_value_get_by_name(value, field_name, &field, NULL));
+    } else {
+      CHECKED_EV(avro_value_get_by_index(value, field_idx, &field, &field_name));
+    }
+    CHECKED_EV(avro_value_to_csv(dest, &field, 0, conf, cache, transformation));
     return 0;
 }
 
@@ -876,10 +905,9 @@ static int avro_file_to_csv(avro_file_reader_t reader, avro_schema_t wschema,
   avro_value_t value;
   avro_generic_value_new(iface, &value);
   cache_t *cache = cache_new();
-
   int rval = 0;
   while (avro_file_reader_read_value(reader, &value) == 0) {
-    if ((rval = avro_value_to_csv(stdout, &value, 1, conf, cache)) != 0) {
+    if ((rval = avro_value_to_csv(stdout, &value, 1, conf, cache, TRANSFORM_NONE)) != 0) {
       break;
     }
     if (fputc('\n', stdout) < 0) {
@@ -1017,14 +1045,15 @@ static int process_file(const char *filename, const config_t *conf) {
   }
 
   avro_schema_t wschema = avro_file_reader_get_writer_schema(reader);
-
   int rval;
   if (conf->show_schema) {
     rval = print_schema(wschema);
-  } else if (conf->output_csv) {
-    rval = avro_file_to_csv(reader, wschema, conf);
   } else {
-    rval = avro_file_to_json(reader, wschema, conf);
+    if (conf->output_csv) {
+      rval = avro_file_to_csv(reader, wschema, conf);
+    } else {
+      rval = avro_file_to_json(reader, wschema, conf);
+    }
   }
   avro_schema_decref(wschema);
   avro_file_reader_close(reader);
@@ -1036,12 +1065,17 @@ static void print_usage(const char *exe) {
           "Usage: %s [OPTIONS] FILE\n"
           "\n"
           "Where options are:\n"
-          " --show-schema                 Only show Avro file schema, and exit\n"
-          " --prune                       Omit null values as well as empty lists and objects\n"
-          " --logical-types               Convert logical types automatically\n"
-          " --csv                         Produce output in CSV format\n"
-          " --ms-hadoop-logical-types     Convert non-standard logical types of Microsoft.Hadoop.Avro (System.Guid) automatically\n"
-          " --columns 1,2,...             Only output specified columns numbers\n",
+          " --show-schema                                                         Only show Avro file schema, and exit\n"
+          " --prune                                                               Omit null values as well as empty lists and objects\n"
+          " --logical-types                                                       Convert logical types automatically\n"
+          " --csv                                                                 Produce output in CSV format\n"
+          " --ms-hadoop-logical-types                                             Convert non-standard logical types of Microsoft.Hadoop.Avro (System.Guid) automatically\n"
+          " --columns '[[\"<column>\",\"<transformation>\"],\"<column>\"...]',...       Only output specified columns (with optional transformations)\n"
+          "                                                                       Supported transformations (only with --csv) are: \n"
+          "                                                                       For 'long' values representing time units since Unix epoch (1970-01-01) to ISO 8601 'yyyy-mm-ddThh::mm:ss.0000000Z': \n"
+          "                                                                       ts-s: converts seconds\n"
+          "                                                                       ts-ms: converts milliseconds\n"
+          "                                                                       ts-ns: converts nanoseconds\n",
           exe);
   exit(1);
 }
@@ -1062,6 +1096,18 @@ char *alloc_and_copy_string(const char *source) {
   return duplicate;
 }
 
+enum TransformationType transformStringToEnum(const char* transformation) {
+    if (!strcmp(transformation, TRANSFORM_TS_SECS_STR)) {
+        return TRANSFORM_TS_SECS;
+    } else if (!strcmp(transformation, TRANSFORM_TS_MILLIS_STR)) {
+        return TRANSFORM_TS_MILLIS;
+    } else if (!strcmp(transformation, TRANSFORM_TS_NANOS_STR)) {
+        return TRANSFORM_TS_NANOS;
+    } else {
+        return TRANSFORM_NONE; // Invalid or unsupported transformation
+    }
+}
+
 static const char *parse_args(int argc, char **argv, config_t *conf) {
   int arg_idx;
   for (arg_idx = 1; arg_idx < argc - 1; ++arg_idx) {
@@ -1079,7 +1125,7 @@ static const char *parse_args(int argc, char **argv, config_t *conf) {
       // Treat the next argument as a JSON array string
       const char *columns_json_string = argv[++arg_idx];
       
-      // Parse the JSON array string to extract column names
+      // Parse the JSON array string to extract column information
       json_t *columns_json_array = json_loads(columns_json_string, 0, NULL);
       
       if (!columns_json_array) {
@@ -1087,15 +1133,40 @@ static const char *parse_args(int argc, char **argv, config_t *conf) {
         exit(1);
       }
       
-      // Extract and store column names from the JSON array
+      // Extract and store column information from the JSON array
       size_t columns_json_array_size = json_array_size(columns_json_array);
       conf->columns_size = columns_json_array_size;
-      conf->columns = (char **)malloc(sizeof(char *) * columns_json_array_size);
+      conf->columns = (column_info_t *)malloc(sizeof(column_info_t) * columns_json_array_size);
       
       for (size_t i = 0; i < columns_json_array_size; i++) {
         json_t *item = json_array_get(columns_json_array, i);
-        if (json_is_string(item)) {
-          conf->columns[i] = alloc_and_copy_string(json_string_value(item));
+
+        if (json_is_array(item) && json_array_size(item) >= 2) {
+          json_t *column_name_item = json_array_get(item, 0);
+          json_t *transformation_item = json_array_get(item, 1);
+
+          if (json_is_string(column_name_item)) {
+            conf->columns[i].column_name = alloc_and_copy_string(json_string_value(column_name_item));
+
+            if (json_is_string(transformation_item)) {
+              const char* transformation = json_string_value(transformation_item);
+              conf->columns[i].transformation = transformStringToEnum(transformation);
+
+              if (conf->columns[i].transformation == TRANSFORM_NONE) {
+                  fprintf(stderr, "Error: Invalid or unsupported transformation in JSON array for columns.\n");
+                  exit(1);
+              }
+            } else {
+              conf->columns[i].transformation = TRANSFORM_NONE; // No transformation specified
+            }
+          } else {
+            fprintf(stderr, "Error: Invalid item in JSON array for columns.\n");
+            exit(1);
+          }
+        } else if (json_is_string(item)) {
+          // When only a column name is provided without transformation
+          conf->columns[i].column_name = alloc_and_copy_string(json_string_value(item));
+          conf->columns[i].transformation = TRANSFORM_NONE;
         } else {
           fprintf(stderr, "Error: Invalid item in JSON array for columns.\n");
           exit(1);
@@ -1114,10 +1185,6 @@ static const char *parse_args(int argc, char **argv, config_t *conf) {
   
   return argv[arg_idx];
 }
-
-
-
-
 
 #if defined(_WIN32)
 /*
@@ -1180,7 +1247,7 @@ int main(int argc, char **argv) {
   int rval = process_file(file, &conf);
   if (conf.columns) {
     for(size_t i = 0; i < conf.columns_size; i++) {
-      free(conf.columns[i]);
+      free(conf.columns[i].column_name);
     }
     free(conf.columns);
   }
