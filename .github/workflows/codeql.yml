@@ -45,17 +45,7 @@ jobs:
       matrix:
         include:
         - language: c-cpp
-          # build-mode: autobuild
-          run: |
-            git clone https://github.com/spektom/avro.git
-            cd avro/lang/c
-            git checkout c_logical_types
-            mkdir build
-            cd build
-            cmake ..
-            make -j
-            cmake -DAVRO_LIBRARY=../../avro/lang/c/build/src/libavro.a -DAVRO_INCLUDE_DIR=../../avro/lang/c/src ..
-            make -j
+          build-mode: manual
         # CodeQL supports the following values keywords for 'language': 'c-cpp', 'csharp', 'go', 'java-kotlin', 'javascript-typescript', 'python', 'ruby', 'swift'
         # Use `c-cpp` to analyze code written in C, C++ or both
         # Use 'java-kotlin' to analyze code written in Java, Kotlin or both
@@ -88,13 +78,21 @@ jobs:
     # ℹ️ Command-line programs to run using the OS shell.
     # 📚 See https://docs.github.com/en/actions/using-workflows/workflow-syntax-for-github-actions#jobsjob_idstepsrun
     - if: matrix.build-mode == 'manual'
+      name: Building the source code
       run: |
-        echo 'If you are using a "manual" build mode for one or more of the' \
-          'languages you are analyzing, replace this with the commands to build' \
-          'your code, for example:'
-        echo '  make bootstrap'
-        echo '  make release'
-        exit 1
+        sudo apt-get install libjansson-dev liblzma-dev libsnappy-dev zlib1g-dev
+        curl -sSL https://github.com/spektom/avro/archive/refs/heads/c_logical_types.tar.gz -o - | tar -zxf -
+        mv avro-c_logical_types avro
+        cd avro/lang/c
+        mkdir build
+        cd build
+        cmake ..
+        make -j
+        cd ../../../../
+        mkdir build
+        cd build
+        cmake -DZLIB_LIBRARY=/usr/lib/x86_64-linux-gnu/libz.a -DAVRO_LIBRARY=../avro/lang/c/build/src/libavro.a -DAVRO_INCLUDE_DIR=../avro/lang/c/src ..
+        make -j
 
     - name: Perform CodeQL Analysis
       uses: github/codeql-action/analyze@v3
