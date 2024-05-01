@@ -13,9 +13,9 @@ jobs:
       run: sudo apt-get install libjansson-dev liblzma-dev libsnappy-dev zlib1g-dev
     - name: build Avro private branch
       run: |
-        git clone https://github.com/spektom/avro.git
+        curl -sSL https://github.com/spektom/avro/archive/refs/heads/c_logical_types.tar.gz -o - | tar -zxf -
+        mv avro-c_logical_types avro
         cd avro/lang/c
-        git checkout c_logical_types
         mkdir build
         cd build
         cmake ..
